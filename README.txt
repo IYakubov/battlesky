@@ -2,7 +2,7 @@ SKY FRONT — 3D browser warplane battle
 ======================================
 
 The warplane twin of STEEL FRONT: same rooms, lobby, modes and sounds,
-but fighter planes with mouse-aim flight and machine guns.
+but fighter jets with mouse-aim flight, a cannon and lock-on missiles.
 
 RUN
   npm install
@@ -16,20 +16,23 @@ PLAY
   Up to 10 pilots. 1 player can start a practice flight.
 
 CONTROLS
-  Mouse: point where you want to fly — the plane turns to follow the circle
-  Click: machine guns (they overheat)   W/S: throttle   Shift: boost
-  A/D: rudder   Right-click: zoom   Wheel: camera distance
+  Mouse: point where you want to fly — the jet turns to follow the circle
+  Click: cannon (overheats)   Right-click / Q: missile   F: flares
+  W/S: throttle   Shift: afterburner   A/D: rudder   C (hold): zoom   Wheel: camera
   Tab scores · Enter chat · M mute · Esc pause (host: back to lobby)
-  Phones: left stick steers, drag right side to look, FIRE / BOOST buttons.
+  Phones: left stick steers, drag right side to look, FIRE / BOOST / MISSILE / FLARES buttons.
 
 COMBAT
-  100 HP. Bullets converge 300 m ahead of the nose (the gun cross).
-  Red diamond = lead marker: put the gun cross on it to hit a moving plane.
-  Engine/cockpit hits +30-40% damage, tail +15%, wings -25%.
-  Flying into the ground or a building kills you — if someone shot you in
-  the last 12 s, they get the kill. Too slow = stall, nose drops.
-  Green rings in the sky repair 35 HP (respawn after 25 s).
-  Hills block line of sight; enemies behind them vanish from map & markers.
+  100 HP. Cannon rounds converge 360 m ahead (the gun cross); red diamond = lead marker.
+  MISSILES: keep an enemy inside the dashed circle ~1.3 s to lock (rising beeps,
+  then fast beeps = locked). Fire: the missile chases for 4 s with a limited turn
+  rate, then flies straight and self-destructs. Hit = 45 damage. 2 missiles,
+  one reloads every 8 s. Fired without a lock it flies straight.
+  The target hears a warning ("ВАС ЗАХВАТЫВАЮТ" / "РАКЕТА!") with an arrow to the
+  missile. Dodge with a hard turn, or drop flares (3 per life): missiles more than
+  ~55 m away go for the flares instead.
+  Flying into the ground or a building kills you; your last attacker (12 s) gets the kill.
+  Green rings repair 35 HP and refill missiles + flares.
 
 SOUNDS
   Gun, hit, ricochet, repair and victory sounds plus tank_epic.mp3 music

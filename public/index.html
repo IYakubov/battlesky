@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>SKY FRONT — 3D воздушный бой</title>
+<title>SKY FRONT — 3D бой истребителей</title>
 <style>
 @font-face{font-family:Unbounded;src:url(fonts/Unbounded-Variable.woff2) format('woff2');font-weight:200 900;font-display:swap}
 :root{--bg:#121416;--panel:rgba(22,25,27,.86);--line:rgba(255,255,255,.09);--txt:#e6e3da;--dim:#8d918c;--acc:#e3a53c;--a:#7d8c4a;--b:#4f7395;--red:#e0503f;--green:#7fc35a}
@@ -71,6 +71,13 @@ input.txt:focus{border-color:var(--acc)}
 .gauges .g{flex:1}
 .gauges i{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
 .gauges em{display:block;height:100%;width:50%;background:#b6d35f}
+.pips{display:flex;gap:4px;letter-spacing:0}
+.pips u{display:block;width:9px;height:16px;border-radius:3px;background:rgba(255,255,255,.12);position:relative;overflow:hidden;text-decoration:none}
+.pips u i{position:absolute;left:0;right:0;bottom:0;background:#f3f1e8;display:block;height:0}
+#mwarn{position:absolute;top:84px;left:50%;transform:translateX(-50%);padding:8px 16px;border-radius:10px;background:rgba(160,20,10,.75);border:1px solid #ff6a50;color:#fff;font-weight:900;font-size:16px;letter-spacing:.2em;display:none;animation:blink .25s infinite alternate}
+#mwarn.lock{background:rgba(140,90,0,.7);border-color:#e3a53c;animation-duration:.5s}
+#tmis{position:absolute;right:40px;bottom:170px;width:76px;height:76px;border-radius:50%;background:rgba(227,165,60,.4);border:2px solid rgba(255,255,255,.3);color:#fff;font:800 10px Unbounded}
+#tflare{position:absolute;right:130px;bottom:120px;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 9px Unbounded}
 #warn{position:absolute;top:58%;left:0;right:0;text-align:center;font-weight:900;font-size:20px;letter-spacing:.2em;color:#ff6a50;text-shadow:0 2px 10px #000;display:none;animation:blink .5s infinite alternate}
 @keyframes blink{from{opacity:1}to{opacity:.35}}
 #feed{position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
@@ -128,7 +135,7 @@ tr.dead td{opacity:.45}
 <div id="menu" class="screen on noise">
   <div class="card">
     <div class="logo">SKY<br><span>FRONT</span></div>
-    <div class="sub">3D воздушный бой · онлайн</div>
+    <div class="sub">3D бой истребителей · онлайн</div>
     <label>Позывной</label>
     <input id="name" class="txt" maxlength="14" placeholder="Ваше имя">
     <div style="height:16px"></div>
@@ -161,9 +168,9 @@ tr.dead td{opacity:.45}
       <button class="btn" id="startBtn" style="flex:1">Начать бой</button>
     </div>
     <div class="help">
-      <kbd>Мышь</kbd> управление (самолёт летит за прицелом) · <kbd>Клик</kbd> пулемёты · <kbd>W</kbd><kbd>S</kbd> тяга · <kbd>Shift</kbd> форсаж ·
-      <kbd>A</kbd><kbd>D</kbd> руль направления · <kbd>ПКМ</kbd> приближение · <kbd>Колесо</kbd> камера · <kbd>Tab</kbd> счёт · <kbd>Enter</kbd> чат · <kbd>M</kbd> звук.
-      Наведите перекрестие на маркер упреждения ◆, чтобы попасть. Пулемёты перегреваются. Не врежьтесь в землю. Зелёные кольца чинят самолёт.
+      <kbd>Мышь</kbd> управление (истребитель летит за прицелом) · <kbd>Клик</kbd> пушка · <kbd>ПКМ</kbd>/<kbd>Q</kbd> ракета · <kbd>F</kbd> ловушки ·
+      <kbd>W</kbd><kbd>S</kbd> тяга · <kbd>Shift</kbd> форсаж · <kbd>A</kbd><kbd>D</kbd> руль · <kbd>C</kbd> приближение · <kbd>Колесо</kbd> камера · <kbd>Tab</kbd> счёт · <kbd>Enter</kbd> чат · <kbd>M</kbd> звук.
+      Держите врага в круге прицела — после захвата ракета догоняет его 4 секунды. Услышали «РАКЕТА!» — резко отверните и сбросьте ловушки. Зелёные кольца чинят и пополняют ракеты.
     </div>
   </div>
 </div>
@@ -180,6 +187,7 @@ tr.dead td{opacity:.45}
   <div id="center"></div>
   <div id="spec"></div>
   <div id="warn"></div>
+  <div id="mwarn"></div>
   <div id="bottom">
     <div id="hpwrap">
       <div id="hpline"><span id="myname">ПИЛОТ</span><b id="hptxt">100</b></div>
@@ -190,6 +198,8 @@ tr.dead td{opacity:.45}
         <div class="g"><span>ТЯГА</span><i><em id="thr"></em></i></div>
         <div class="g"><span>ФОРСАЖ</span><i><em id="bst" style="background:#6fb7e8"></em></i></div>
         <div class="g"><span>НАГРЕВ</span><i><em id="heat" style="background:#e3a53c"></em></i></div>
+        <div><span>РАКЕТЫ</span><span class="pips" id="mis"></span></div>
+        <div><span>ЛОВУШКИ</span><b id="flr">3</b></div>
       </div>
     </div>
   </div>
@@ -201,6 +211,8 @@ tr.dead td{opacity:.45}
   <div id="joy"><div id="joyk"></div></div>
   <button id="tzoom">ФОРСАЖ</button>
   <button id="tfire">ОГОНЬ</button>
+  <button id="tmis">РАКЕТА</button>
+  <button id="tflare">ЛОВУШКИ</button>
 </div>
 
 <!-- PAUSE -->

@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 // ── game constants (keep in sync with client) ──
 const MAX_PLAYERS = 10;
 const MAX_HP = 100;
-const MAP_HALF = 600;
+const MAP_HALF = 450;
 const ROUNDS_TO_WIN = 3;        // team battle: first to 3 rounds
 const FFA_KILLS_TO_WIN = 10;    // free-for-all: first to 10 kills
 const FFA_TIME = 8 * 60;        // seconds
@@ -62,12 +62,12 @@ function spawnFor(r, p, idx, total) {
     // formation: wedge behind the leader, altitude staggered
     const side = p.team === 0 ? 1 : -1;
     const row = Math.floor((idx + 1) / 2), dir = idx % 2 ? 1 : -1;
-    const x = dir * row * 34, z = side * (MAP_HALF - 160 + row * 22);
+    const x = dir * row * 40, z = side * (MAP_HALF - 140 + row * 24);
     return { x, y: 190 + row * 12, z, yaw: side > 0 ? Math.PI : 0 };
   }
   // FFA: random point on a big ring, facing centre
   const a = Math.random() * Math.PI * 2;
-  const rad = 330 + Math.random() * 120;
+  const rad = 240 + Math.random() * 100;
   const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
   return { x, y: 170 + Math.random() * 80, z, yaw: Math.atan2(-x, -z) };
 }
@@ -233,6 +233,23 @@ io.on('connection', socket => {
     socket.to(room.code).volatile.emit('st', socket.id, s);
   });
 
+  // missiles: shooter simulates & reports hits; others get visuals
+  socket.on('missile', m => {
+    if (!room || !m) return;
+    const p = room.players.get(socket.id);
+    const now = Date.now();
+    if (!p || !p.alive || now - (p.lastMissile || 0) < 400) return;
+    p.lastMissile = now;
+    socket.to(room.code).emit('missile', socket.id, m);
+  });
+  socket.on('mboom', m => { if (room && m) socket.to(room.code).emit('mboom', socket.id, m); });
+  socket.on('flare', () => {
+    if (!room) return;
+    const p = room.players.get(socket.id);
+    if (p && p.alive) io.to(room.code).emit('flare', socket.id);
+  });
+  socket.on('lock', l => { if (room && l) socket.to(room.code).emit('lock', socket.id, l); });
+
   socket.on('fire', f => {
     if (!room) return;
     const p = room.players.get(socket.id);
@@ -250,7 +267,14 @@ io.on('connection', socket => {
     const pt = Array.isArray(h.pt) ? h.pt.slice(0, 3).map(Number) : [0, 0, 0];
     if (h.ric) { io.to(room.code).emit('ric', { target: target.id, by: shooter.id, pt }); return; }
     if (room.mode === 'team' && shooter.team === target.team) return; // no friendly fire
-    const dmg = Math.max(1, Math.min(15, Math.round(Number(h.dmg) || 0)));
+    // guns: max 15 per bullet; missiles: max 50, at most one missile hit per 0.3 s per shooter
+    let cap = 15;
+    if (h.m) {
+      const now = Date.now();
+      if (now - (shooter.lastMissileHit || 0) < 300) return;
+      shooter.lastMissileHit = now; cap = 50;
+    }
+    const dmg = Math.max(1, Math.min(cap, Math.round(Number(h.dmg) || 0)));
     const real = Math.min(dmg, target.hp);
     target.hp -= real;
     shooter.dmg += real;
