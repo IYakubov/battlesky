@@ -114,7 +114,7 @@ const audio = (() => {
   const buffers = {};
   const music = new Audio('audio/tank_epic.mp3');
   music.loop = true; music.volume = 0.35;
-  let engOsc, engOsc2, engGain, engFilter;
+  let engOsc, engOsc2, engGain, engFilter, noiseBuf = null;
   async function load(name) {
     try {
       const r = await fetch('audio/' + name + '.mp3');
@@ -124,7 +124,13 @@ const audio = (() => {
   function unlock() {
     if (unlocked) return; unlocked = true;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = 0.9;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
+    master.connect(comp); comp.connect(ctx.destination);
+    // white-noise buffer for the missile launch whoosh
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     ['shoot', 'hit', 'ricochet', 'energy', 'victory'].forEach(load);
     // propeller engine drone
     engOsc = ctx.createOscillator(); engOsc.type = 'sawtooth'; engOsc.frequency.value = 70;
@@ -158,7 +164,7 @@ const audio = (() => {
   function engine(throttle, speed, boost) {
     if (!ctx) return;
     const t = ctx.currentTime, on = muted ? 0 : 1;
-    engGain.gain.setTargetAtTime(on * (0.045 + throttle * 0.05 + boost * 0.03), t, 0.15);
+    engGain.gain.setTargetAtTime(on * (0.012 + throttle * 0.016 + boost * 0.014), t, 0.15);
     engOsc.frequency.setTargetAtTime(62 + throttle * 46 + speed * 18 + boost * 20, t, 0.25);
     engOsc2.frequency.setTargetAtTime(31 + throttle * 23 + speed * 9 + boost * 10, t, 0.25);
     engFilter.frequency.setTargetAtTime(380 + throttle * 500 + boost * 400, t, 0.25);
@@ -176,7 +182,25 @@ const audio = (() => {
     const g = ctx.createGain(); g.gain.value = vol; g.gain.setTargetAtTime(0, ctx.currentTime + dur * 0.7, 0.01);
     o.connect(g); g.connect(master); o.start(); o.stop(ctx.currentTime + dur + 0.05);
   }
-  return { unlock, play, at, engine, engineOff, setMusicVol, toggle, tone };
+  // rocket motor: filtered noise sweeping up, fading out
+  function whoosh(vol = 1, pan = 0) {
+    if (!ctx || muted || !noiseBuf || vol <= 0.01) return;
+    const t = ctx.currentTime;
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.9;
+    f.frequency.setValueAtTime(350, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.35); f.frequency.exponentialRampToValueAtTime(900, t + 1.3);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * 1.4, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    let node = f;
+    s.connect(f);
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); f.connect(p); node = p; }
+    node.connect(g); g.connect(master); s.start(t); s.stop(t + 1.5);
+  }
+  function whooshAt(pos, vol = 1) {
+    const dx = pos.x - camera.position.x, dy = pos.y - camera.position.y, dz = pos.z - camera.position.z;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    whoosh(vol * Math.max(0, 1 - d / 700) ** 1.6, 0);
+  }
+  return { unlock, play, at, engine, engineOff, setMusicVol, toggle, tone, whoosh, whooshAt };
 })();
 $('mute').onclick = () => { audio.unlock(); audio.toggle(); };
 const _a1 = new THREE.Vector3(), _a2 = new THREE.Vector3();
@@ -915,8 +939,8 @@ function fireGun(t, mine) {
   spawnBullet(o, v, t.id, mine);
   particles.muzzle(o);
   const now = performance.now();
-  if (mine) { audio.play('shoot', 0.3, 0, 1.55 + Math.random() * 0.2); shake = Math.max(shake, 0.16); }
-  else if (now - (t.sndT || 0) > 110) { t.sndT = now; audio.at('shoot', o, 0.4, 1.55 + Math.random() * 0.2); }
+  if (mine) { audio.play('shoot', 1.3, 0, 1.45 + Math.random() * 0.2); shake = Math.max(shake, 0.16); }
+  else if (now - (t.sndT || 0) > 100) { t.sndT = now; audio.at('shoot', o, 1.4, 1.45 + Math.random() * 0.2); }
 }
 
 // ═══════════ MISSILES, LOCK-ON, FLARES ═══════════
@@ -994,7 +1018,7 @@ function fireMissile() {
   const id = myId + ':' + (misSeq++);
   spawnMissile({ id, owner: myId, target, pos: o, vel, mine: true });
   socket.emit('missile', { id, o: [+o.x.toFixed(1), +o.y.toFixed(1), +o.z.toFixed(1)], v: [+vel.x.toFixed(1), +vel.y.toFixed(1), +vel.z.toFixed(1)], target });
-  audio.play('shoot', 0.85, 0, 0.6);
+  audio.play('shoot', 1.8, 0, 0.6); audio.whoosh(1);
   shake = Math.max(shake, 0.3);
   if (!target) logMsg('Ракета без захвата');
   lock.t = 0; lock.locked = false;
@@ -1104,7 +1128,7 @@ socket.on('missile', (owner, m) => {
   if (!world || !inGame) return;
   const pos = new THREE.Vector3(...m.o);
   spawnMissile({ id: m.id, owner, target: m.target, pos, vel: new THREE.Vector3(...m.v), mine: false });
-  audio.at('shoot', pos, 0.8, 0.6);
+  audio.at('shoot', pos, 1.6, 0.6); audio.whooshAt(pos, 1);
 });
 socket.on('mboom', (owner, m) => {
   const i = missiles.findIndex(x => x.id === m.id);
