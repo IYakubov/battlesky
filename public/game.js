@@ -59,7 +59,7 @@ $('createBtn').onclick = () => {
 function doJoin() {
   audio.unlock(); saveName();
   const code = digitCode();
-  if (code.length !== 6) return $('err').textContent = 'Enter the 6-digit code';
+  if (code.length !== 6) return $('err').textContent = 'Введите 6-значный код';
   socket.emit('join', { code, name: nameIn.value }, r => {
     if (!r.ok) return $('err').textContent = r.err;
     myId = r.id; history.replaceState(null, '', '?code=' + r.code); showScreen('lobby');
@@ -69,8 +69,8 @@ $('joinBtn').onclick = doJoin;
 $('copyBtn').onclick = () => {
   const link = location.origin + location.pathname + '?code=' + room.code;
   (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(
-    () => { $('copyBtn').textContent = 'Link copied'; setTimeout(() => $('copyBtn').textContent = 'Copy invite link', 1500); },
-    () => prompt('Invite link', link));
+    () => { $('copyBtn').textContent = 'Ссылка скопирована'; setTimeout(() => $('copyBtn').textContent = 'Скопировать ссылку', 1500); },
+    () => prompt('Ссылка-приглашение', link));
 };
 $('mTeam').onclick = () => socket.emit('setMode', 'team');
 $('mFfa').onclick = () => socket.emit('setMode', 'ffa');
@@ -91,16 +91,16 @@ function renderLobby() {
   $('mTeam').classList.toggle('on', room.mode === 'team');
   $('mFfa').classList.toggle('on', room.mode === 'ffa');
   $('mTeam').disabled = $('mFfa').disabled = !isHost();
-  const chip = p => `<div class="chip ${p.id === myId ? 'me' : ''}"><span>${esc(p.name)}</span>${p.id === room.hostId ? '<i>HOST</i>' : ''}</div>`;
+  const chip = p => `<div class="chip ${p.id === myId ? 'me' : ''}"><span>${esc(p.name)}</span>${p.id === room.hostId ? '<i>ХОСТ</i>' : ''}</div>`;
   if (room.mode === 'team') {
-    const col = (t, nm, c) => `<div class="team"><h4 style="color:${c}">${nm}<button data-t="${t}">${me() && me().team === t ? 'YOUR TEAM' : 'JOIN'}</button></h4>${room.players.filter(p => p.team === t).map(chip).join('')}</div>`;
-    $('teams').innerHTML = col(0, 'ALPHA', 'var(--a)') + col(1, 'BRAVO', 'var(--b)');
+    const col = (t, nm, c) => `<div class="team"><h4 style="color:${c}">${nm}<button data-t="${t}">${me() && me().team === t ? 'ВАША КОМАНДА' : 'ВОЙТИ'}</button></h4>${room.players.filter(p => p.team === t).map(chip).join('')}</div>`;
+    $('teams').innerHTML = col(0, 'АЛЬФА', 'var(--a)') + col(1, 'БРАВО', 'var(--b)');
     $('teams').querySelectorAll('button').forEach(b => b.onclick = () => socket.emit('setTeam', +b.dataset.t));
   } else {
-    $('teams').innerHTML = `<div class="team"><h4>ALL VS ALL · ${room.players.length}/10</h4>${room.players.map(chip).join('')}</div>`;
+    $('teams').innerHTML = `<div class="team"><h4>ВСЕ ПРОТИВ ВСЕХ · ${room.players.length}/10</h4>${room.players.map(chip).join('')}</div>`;
   }
   $('startBtn').disabled = !isHost();
-  $('startBtn').textContent = isHost() ? (room.players.length < 2 ? 'Start (practice)' : 'Start battle') : 'Waiting for host…';
+  $('startBtn').textContent = isHost() ? (room.players.length < 2 ? 'Начать (тренировка)' : 'Начать бой') : 'Ожидание хоста…';
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -780,8 +780,8 @@ function updateMe(dt, now) {
   let desH = camYaw, desP = camPitch;
   warnText = '';
   const outside = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) > MAP_HALF - 30;
-  if (outside) { desH = Math.atan2(-t.pos.x, -t.pos.z); desP = 0.05; warnText = 'RETURN TO THE BATTLE AREA'; }
-  if (t.pos.y > CEILING) { desP = Math.min(desP, -0.2); warnText = 'ALTITUDE LIMIT'; }
+  if (outside) { desH = Math.atan2(-t.pos.x, -t.pos.z); desP = 0.05; warnText = 'ВЕРНИТЕСЬ В ЗОНУ БОЯ'; }
+  if (t.pos.y > CEILING) { desP = Math.min(desP, -0.2); warnText = 'ПРЕДЕЛ ВЫСОТЫ'; }
   const agl = t.pos.y - H(t.pos.x, t.pos.z);
   const turnK = Math.max(0.35, Math.min(1, (t.speed - 30) / 90)) * (boosting ? 0.8 : 1);
   const maxYaw = 1.0 * turnK, maxPitch = 0.95 * turnK;
@@ -791,7 +791,7 @@ function updateMe(dt, now) {
   yawRate += rudder * 0.45;
   let pitchRate = Math.max(-maxPitch, Math.min(maxPitch, dp * 2.4));
   // stall: nose drops when too slow
-  if (t.speed < MIN_SPEED + 12) { const k = (MIN_SPEED + 12 - t.speed) / 12; pitchRate -= k * 0.8; warnText = warnText || 'STALL'; }
+  if (t.speed < MIN_SPEED + 12) { const k = (MIN_SPEED + 12 - t.speed) / 12; pitchRate -= k * 0.8; warnText = warnText || 'СВАЛИВАНИЕ'; }
   if (!frozen) {
     t.h = wrap(t.h + yawRate * dt);
     t.p = Math.max(-1.3, Math.min(1.3, t.p + pitchRate * dt));
@@ -806,7 +806,7 @@ function updateMe(dt, now) {
   t.speed = Math.max(28, Math.min(280, t.speed));
   if (!frozen) t.pos.addScaledVector(fwd(t.h, t.p, _v1), t.speed * dt);
 
-  if (agl < 70 && t.p < -0.15) warnText = 'PULL UP!';
+  if (agl < 70 && t.p < -0.15) warnText = 'ТЯНИ ВВЕРХ!';
 
   // crash into ground / buildings
   const ground = Math.max(H(t.pos.x, t.pos.z), -6.5);
@@ -904,7 +904,7 @@ function updateCamera(dt, now) {
   $('spec').style.display = spectating && inGame ? 'block' : 'none';
   if (spectating) {
     const p = focus && room.players.find(q => q.id === focus.id);
-    $('spec').textContent = focus && focus.alive && focus !== t ? `SPECTATING ${p ? p.name.toUpperCase() : ''} · SPACE TO SWITCH` : 'SHOT DOWN · WAITING';
+    $('spec').textContent = focus && focus.alive && focus !== t ? `НАБЛЮДЕНИЕ: ${p ? p.name.toUpperCase() : ''} · ПРОБЕЛ — СЛЕДУЮЩИЙ` : 'ВАС СБИЛИ · ОЖИДАНИЕ';
   }
   if (!focus) return;
   const d = _v1.set(Math.sin(camYaw) * Math.cos(camPitch), Math.sin(camPitch), Math.cos(camYaw) * Math.cos(camPitch));
@@ -990,20 +990,20 @@ function drawHud(now) {
       const near = gunPt && Math.hypot(gunPt[0] - lp[0], gunPt[1] - lp[1]) < 24;
       hctx.fillStyle = near ? '#ff3a26' : 'rgba(255,110,90,.9)';
       hctx.beginPath(); hctx.moveTo(lp[0], lp[1] - 7); hctx.lineTo(lp[0] + 7, lp[1]); hctx.lineTo(lp[0], lp[1] + 7); hctx.lineTo(lp[0] - 7, lp[1]); hctx.closePath(); hctx.fill();
-      hctx.font = '700 9px Unbounded'; hctx.textAlign = 'center'; hctx.fillText(Math.round(dist) + 'm', lp[0], lp[1] + 18);
+      hctx.font = '700 9px Unbounded'; hctx.textAlign = 'center'; hctx.fillText(Math.round(dist) + ' м', lp[0], lp[1] + 18);
     }
   }
   if (!locked && !isTouch && t && t.alive) {
     hctx.font = '700 12px Unbounded'; hctx.textAlign = 'center'; hctx.fillStyle = 'rgba(0,0,0,.55)';
-    hctx.fillRect(w / 2 - 150, h * 0.66 - 20, 300, 32); hctx.fillStyle = '#e3a53c';
-    hctx.fillText('CLICK TO TAKE CONTROL', w / 2, h * 0.66);
+    hctx.fillRect(w / 2 - 170, h * 0.66 - 20, 340, 32); hctx.fillStyle = '#e3a53c';
+    hctx.fillText('КЛИКНИТЕ, ЧТОБЫ УПРАВЛЯТЬ', w / 2, h * 0.66);
   }
   if (now < roundStartAt) {
     const s = Math.ceil((roundStartAt - now) / 1000);
-    centerMsg(String(s), room && room.mode === 'team' ? 'ROUND ' + room.round : 'GET READY', 400);
+    centerMsg(String(s), room && room.mode === 'team' ? 'РАУНД ' + room.round : 'ПРИГОТОВЬТЕСЬ', 400);
   }
   const wEl = $('warn');
-  const wt = overheated && t && t.alive ? (warnText || 'GUNS OVERHEATED') : warnText;
+  const wt = overheated && t && t.alive ? (warnText || 'ПУЛЕМЁТЫ ПЕРЕГРЕТЫ') : warnText;
   wEl.style.display = wt && inGame ? 'block' : 'none';
   if (wt) wEl.textContent = wt;
 }
@@ -1038,12 +1038,12 @@ let roomRecv = 0;
 function updateTopBar() {
   if (!room) return;
   if (room.mode === 'team') {
-    $('top').innerHTML = `<span class="sc tA">${room.scores[0]}</span><div class="mid">ALPHA · ROUND ${room.round} · BRAVO<br><span style="color:var(--txt)">${aliveCount(0)} vs ${aliveCount(1)}</span></div><span class="sc tB">${room.scores[1]}</span>`;
+    $('top').innerHTML = `<span class="sc tA">${room.scores[0]}</span><div class="mid">АЛЬФА · РАУНД ${room.round} · БРАВО<br><span style="color:var(--txt)">${aliveCount(0)} против ${aliveCount(1)}</span></div><span class="sc tB">${room.scores[1]}</span>`;
   } else {
     const left = room.timeLeft != null ? Math.max(0, Math.round((room.timeLeft - (performance.now() - roomRecv)) / 1000)) : 0;
     const lead = [...room.players].sort((a, b) => b.kills - a.kills)[0];
     const mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, '0');
-    $('top').innerHTML = `<div class="mid">TIME<br><span style="color:var(--txt);font-size:16px">${mm}:${ss}</span></div><div class="mid">LEADER<br><span style="color:var(--acc);font-size:12px">${lead ? esc(lead.name) + ' · ' + lead.kills : '-'}</span></div><div class="mid">YOU<br><span style="color:var(--txt);font-size:16px">${me() ? me().kills : 0}</span></div>`;
+    $('top').innerHTML = `<div class="mid">ВРЕМЯ<br><span style="color:var(--txt);font-size:16px">${mm}:${ss}</span></div><div class="mid">ЛИДЕР<br><span style="color:var(--acc);font-size:12px">${lead ? esc(lead.name) + ' · ' + lead.kills : '-'}</span></div><div class="mid">ВЫ<br><span style="color:var(--txt);font-size:16px">${me() ? me().kills : 0}</span></div>`;
   }
 }
 function aliveCount(team) { return room.players.filter(p => p.team === team && (planes.get(p.id) || {}).alive).length; }
@@ -1067,9 +1067,9 @@ function renderBoard() {
   if (!room) return;
   const rows = ps => ps.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg).map(p =>
     `<tr class="${p.id === myId ? 'me' : ''} ${(planes.get(p.id) || {}).alive ? '' : 'dead'}"><td>${esc(p.name)}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td><td class="n">${p.deaths}</td></tr>`).join('');
-  const head = '<tr><th>PILOT</th><th class="n">KILLS</th><th class="n">DAMAGE</th><th class="n">DEATHS</th></tr>';
+  const head = '<tr><th>ПИЛОТ</th><th class="n">СБИТО</th><th class="n">УРОН</th><th class="n">СМЕРТИ</th></tr>';
   if (room.mode === 'team') {
-    $('board').innerHTML = [0, 1].map(tm => `<div style="font-size:10px;letter-spacing:.25em;color:${tm ? 'var(--b)' : 'var(--a)'};margin:${tm ? 14 : 0}px 0 4px">${tm ? 'BRAVO' : 'ALPHA'} · ${room.scores[tm]}</div><table>${head}${rows(room.players.filter(p => p.team === tm))}</table>`).join('');
+    $('board').innerHTML = [0, 1].map(tm => `<div style="font-size:10px;letter-spacing:.25em;color:${tm ? 'var(--b)' : 'var(--a)'};margin:${tm ? 14 : 0}px 0 4px">${tm ? 'БРАВО' : 'АЛЬФА'} · ${room.scores[tm]}</div><table>${head}${rows(room.players.filter(p => p.team === tm))}</table>`).join('');
   } else $('board').innerHTML = `<table>${head}${rows([...room.players])}</table>`;
 }
 
@@ -1098,7 +1098,7 @@ function updateMarkers(dt) {
     mk.style.display = 'block';
     mk.className = 'mk ' + (enemy ? 'en' : 'al');
     mk.style.left = p2[0] + 'px'; mk.style.top = p2[1] + 'px';
-    mk.firstChild.textContent = (p ? p.name : '') + (dist > 250 ? ' · ' + Math.round(dist) + 'm' : '');
+    mk.firstChild.textContent = (p ? p.name : '') + (dist > 250 ? ' · ' + Math.round(dist) + ' м' : '');
     mk.querySelector('i').style.width = (p ? p.hp : 0) + '%';
   }
 }
@@ -1185,12 +1185,12 @@ socket.on('respawn', d => {
   const t = planes.get(d.id); if (!t) return;
   placePlane(t, d.spawn);
   const rp = room.players.find(q => q.id === d.id); if (rp) { rp.hp = d.hp; rp.alive = true; }
-  if (d.id === myId) { camYaw = t.h; camPitch = 0; heat = 0; overheated = false; centerMsg('BACK IN THE AIR', '', 1200); }
+  if (d.id === myId) { camYaw = t.h; camPitch = 0; heat = 0; overheated = false; centerMsg('СНОВА В ВОЗДУХЕ', '', 1200); }
 });
 socket.on('lateJoin', () => {
   if (worldSeed !== room.seed) { buildWorld(room.seed); worldSeed = room.seed; }
   enterGame(); syncPlanes();
-  centerMsg('JOINED MID-BATTLE', room.mode === 'team' ? 'You fly from the next round' : 'Taking off…', 2500);
+  centerMsg('ВЫ ВОШЛИ ВО ВРЕМЯ БОЯ', room.mode === 'team' ? 'Вылет со следующего раунда' : 'Взлёт…', 2500);
 });
 // my damage is summed per target, so a burst shows one number
 const dmgAcc = new Map();
@@ -1220,8 +1220,8 @@ socket.on('dmg', d => {
 function flushDamage(now) {
   for (const [id, a] of dmgAcc) {
     if (now - a.t < 350) continue;
-    floatText(a.pt, '−' + a.n + (a.zone === 'engine' ? ' ENGINE' : a.zone === 'cockpit' ? ' COCKPIT' : ''));
-    logMsg(`Hit <b style="color:${nameCol(id)}">${nameOf(id)}</b> <span style="color:#ffcf6a">−${a.n}</span>`);
+    floatText(a.pt, '−' + a.n + (a.zone === 'engine' ? ' ДВИГАТЕЛЬ' : a.zone === 'cockpit' ? ' КАБИНА' : ''));
+    logMsg(`Попадание: <b style="color:${nameCol(id)}">${nameOf(id)}</b> <span style="color:#ffcf6a">−${a.n}</span>`);
     dmgAcc.delete(id);
   }
 }
@@ -1238,18 +1238,18 @@ socket.on('kill', d => {
     if (!d.crash) { particles.explosion(pl.pos, 0.8); audio.at('hit', pl.pos, 0.9, 0.8); }
     if (d.target === myId) { myDeathAt = performance.now(); shake = 1; audio.engineOff(); zoom = false; specId = d.by !== myId ? d.by : null; }
   }
-  const verb = d.crash ? (d.by === d.target ? 'crashed' : 'forced down') : '';
+  const verb = d.crash ? (d.by === d.target ? 'разбился' : 'загнал в землю') : '';
   if (d.by === d.target) feed(`<b style="color:${nameCol(d.target)}">${nameOf(d.target)}</b><span class="x">${verb || '✕'}</span>`);
   else feed(`<b style="color:${nameCol(d.by)}">${nameOf(d.by)}</b><span class="x">${verb || '✕'}</span><b style="color:${nameCol(d.target)}">${nameOf(d.target)}</b>`);
-  if (d.by === myId && d.target !== myId) centerMsg('SHOT DOWN', nameOf(d.target).toUpperCase(), 1500, '#ff7a68');
-  if (d.target === myId) centerMsg(d.crash && d.by === myId ? 'YOU CRASHED' : 'YOU WERE SHOT DOWN', d.by !== myId ? 'by ' + nameOf(d.by) : '', 2500, '#ff7a68');
+  if (d.by === myId && d.target !== myId) centerMsg('СБИТ', nameOf(d.target).toUpperCase(), 1500, '#ff7a68');
+  if (d.target === myId) centerMsg(d.crash && d.by === myId ? 'ВЫ РАЗБИЛИСЬ' : 'ВАС СБИЛИ', d.by !== myId ? 'пилот ' + nameOf(d.by) : '', 2500, '#ff7a68');
 });
 socket.on('roundEnd', d => {
   const meP = me();
-  if (d.winner === -1) centerMsg('DRAW', `${d.scores[0]} : ${d.scores[1]}`, 4000);
+  if (d.winner === -1) centerMsg('НИЧЬЯ', `${d.scores[0]} : ${d.scores[1]}`, 4000);
   else {
     const won = meP && meP.team === d.winner;
-    centerMsg(won ? 'ROUND WON' : 'ROUND LOST', `ALPHA ${d.scores[0]} : ${d.scores[1]} BRAVO`, 4000, won ? '#b6d35f' : '#ff7a68');
+    centerMsg(won ? 'РАУНД ВЫИГРАН' : 'РАУНД ПРОИГРАН', `АЛЬФА ${d.scores[0]} : ${d.scores[1]} БРАВО`, 4000, won ? '#b6d35f' : '#ff7a68');
     if (won && !d.matchOver) audio.play('energy', 0.6);
   }
 });
@@ -1258,9 +1258,9 @@ socket.on('matchEnd', d => {
   let won, title, sub;
   if (d.mode === 'team') {
     won = meP && meP.team === d.winner;
-    title = won ? 'VICTORY' : 'DEFEAT';
-    sub = (d.winner === 0 ? 'ALPHA' : 'BRAVO') + ' wins · ' + room.scores[0] + ' : ' + room.scores[1];
-  } else { won = d.winner === myId; title = won ? 'VICTORY' : 'DEFEAT'; sub = nameOf(d.winner) + ' is top ace'; }
+    title = won ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ';
+    sub = (d.winner === 0 ? 'АЛЬФА' : 'БРАВО') + ' побеждает · ' + room.scores[0] + ' : ' + room.scores[1];
+  } else { won = d.winner === myId; title = won ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ'; sub = nameOf(d.winner) + ' — лучший ас'; }
   if (won) audio.play('victory', 0.9);
   setTimeout(() => showResult(title, sub, won), 1200);
 });
@@ -1268,11 +1268,11 @@ function showResult(title, sub, won) {
   document.exitPointerLock && document.exitPointerLock();
   $('resTitle').textContent = title; $('resTitle').style.color = won ? 'var(--acc)' : '#e0503f';
   $('resSub').textContent = sub;
-  const head = '<tr><th>PILOT</th><th class="n">KILLS</th><th class="n">DAMAGE</th><th class="n">DEATHS</th></tr>';
-  const rows = [...room.players].sort((a, b) => b.kills - a.kills || b.dmg - a.dmg).map(p => `<tr class="${p.id === myId ? 'me' : ''}"><td style="text-align:left">${esc(p.name)}${room.mode === 'team' ? ` <span style="color:${p.team ? 'var(--b)' : 'var(--a)'};font-size:9px">${p.team ? 'BRAVO' : 'ALPHA'}</span>` : ''}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td><td class="n">${p.deaths}</td></tr>`).join('');
+  const head = '<tr><th>ПИЛОТ</th><th class="n">СБИТО</th><th class="n">УРОН</th><th class="n">СМЕРТИ</th></tr>';
+  const rows = [...room.players].sort((a, b) => b.kills - a.kills || b.dmg - a.dmg).map(p => `<tr class="${p.id === myId ? 'me' : ''}"><td style="text-align:left">${esc(p.name)}${room.mode === 'team' ? ` <span style="color:${p.team ? 'var(--b)' : 'var(--a)'};font-size:9px">${p.team ? 'БРАВО' : 'АЛЬФА'}</span>` : ''}</td><td class="n">${p.kills}</td><td class="n">${p.dmg}</td><td class="n">${p.deaths}</td></tr>`).join('');
   $('resTable').innerHTML = `<table>${head}${rows}</table>`;
   $('resAgain').style.display = $('resLobby').style.display = isHost() ? '' : 'none';
-  $('resWait').textContent = isHost() ? '' : 'Waiting for the host…';
+  $('resWait').textContent = isHost() ? '' : 'Ожидание хоста…';
   showScreen('result');
 }
 socket.on('lobby', () => { leaveGame(); showScreen('lobby'); renderLobby(); });
@@ -1283,11 +1283,11 @@ socket.on('crate', d => {
   if (!d.avail) {
     const p = room.players.find(q => q.id === d.by); if (p) p.hp = d.hp;
     const t = planes.get(d.by); if (t) { t.hp = d.hp; particles.heal(t.pos); }
-    if (d.by === myId) { audio.play('energy', 0.7); centerMsg('+35 REPAIR', '', 900, '#9bff7a'); }
+    if (d.by === myId) { audio.play('energy', 0.7); centerMsg('+35 РЕМОНТ', '', 900, '#9bff7a'); }
     else audio.at('energy', new THREE.Vector3(c.x, c.y, c.z), 0.5);
   }
 });
-socket.on('left', d => { if (inGame) feed(`<span style="color:var(--dim)">${esc(d.name)} left</span>`); });
+socket.on('left', d => { if (inGame) feed(`<span style="color:var(--dim)">${esc(d.name)} вышел</span>`); });
 socket.on('chat', d => {
   const el = document.createElement('div');
   el.innerHTML = `<b style="color:${room && room.mode === 'team' ? (d.team ? '#7fa6c9' : '#a9b86a') : 'var(--acc)'}">${esc(d.name)}:</b> ${esc(d.text)}`;
@@ -1295,7 +1295,7 @@ socket.on('chat', d => {
   while ($('chatlog').children.length > 6) $('chatlog').firstChild.remove();
   setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 1000); }, 9000);
 });
-socket.on('disconnect', () => { if (myId) centerMsg('CONNECTION LOST', 'Reload the page to rejoin', 99999, '#ff7a68'); });
+socket.on('disconnect', () => { if (myId) centerMsg('СОЕДИНЕНИЕ ПОТЕРЯНО', 'Обновите страницу, чтобы вернуться', 99999, '#ff7a68'); });
 
 function enterGame() {
   if (inGame) return;

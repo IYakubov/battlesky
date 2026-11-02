@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>SKY FRONT — 3D Warplane Battle</title>
+<title>SKY FRONT — 3D воздушный бой</title>
 <style>
 @font-face{font-family:Unbounded;src:url(fonts/Unbounded-Variable.woff2) format('woff2');font-weight:200 900;font-display:swap}
 :root{--bg:#121416;--panel:rgba(22,25,27,.86);--line:rgba(255,255,255,.09);--txt:#e6e3da;--dim:#8d918c;--acc:#e3a53c;--a:#7d8c4a;--b:#4f7395;--red:#e0503f;--green:#7fc35a}
@@ -122,24 +122,24 @@ tr.dead td{opacity:.45}
 <body>
 <canvas id="gl"></canvas>
 <canvas id="hud"></canvas>
-<button id="mute" title="Mute (M)">♪</button>
+<button id="mute" title="Звук (M)">♪</button>
 
 <!-- MENU -->
 <div id="menu" class="screen on noise">
   <div class="card">
     <div class="logo">SKY<br><span>FRONT</span></div>
-    <div class="sub">3D warplane battle · browser multiplayer</div>
-    <label>Callsign</label>
-    <input id="name" class="txt" maxlength="14" placeholder="Your name">
+    <div class="sub">3D воздушный бой · онлайн</div>
+    <label>Позывной</label>
+    <input id="name" class="txt" maxlength="14" placeholder="Ваше имя">
     <div style="height:16px"></div>
-    <button id="createBtn" class="btn" style="width:100%">Create game</button>
-    <div class="or">OR JOIN WITH CODE</div>
+    <button id="createBtn" class="btn" style="width:100%">Создать игру</button>
+    <div class="or">ИЛИ ВОЙТИ ПО КОДУ</div>
     <div class="row">
       <div class="digits" id="digits">
         <input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
         <input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1"><input inputmode="numeric" maxlength="1">
       </div>
-      <button id="joinBtn" class="btn ghost">Join</button>
+      <button id="joinBtn" class="btn ghost">Войти</button>
     </div>
     <div class="err" id="err"></div>
   </div>
@@ -148,22 +148,22 @@ tr.dead td{opacity:.45}
 <!-- LOBBY -->
 <div id="lobby" class="screen noise">
   <div class="card" style="width:min(640px,94vw)">
-    <div class="small">Game code</div>
+    <div class="small">Код игры</div>
     <div class="codebig" id="codebig"></div>
-    <div style="text-align:center;margin-top:10px"><button class="btn ghost" id="copyBtn" style="padding:9px 14px;font-size:10px">Copy invite link</button></div>
+    <div style="text-align:center;margin-top:10px"><button class="btn ghost" id="copyBtn" style="padding:9px 14px;font-size:10px">Скопировать ссылку</button></div>
     <div class="modes">
-      <button data-mode="team" id="mTeam">Team battle · best of 5</button>
-      <button data-mode="ffa" id="mFfa">Free-for-all · 10 kills</button>
+      <button data-mode="team" id="mTeam">Командный бой · до 3 побед</button>
+      <button data-mode="ffa" id="mFfa">Каждый за себя · 10 сбитых</button>
     </div>
     <div class="teams" id="teams"></div>
     <div class="row" style="margin-top:18px">
-      <button class="btn ghost" id="leaveBtn">Leave</button>
-      <button class="btn" id="startBtn" style="flex:1">Start battle</button>
+      <button class="btn ghost" id="leaveBtn">Выйти</button>
+      <button class="btn" id="startBtn" style="flex:1">Начать бой</button>
     </div>
     <div class="help">
-      <kbd>Mouse</kbd> steer (the plane follows your aim) · <kbd>Click</kbd> machine guns · <kbd>W</kbd><kbd>S</kbd> throttle · <kbd>Shift</kbd> boost ·
-      <kbd>A</kbd><kbd>D</kbd> rudder · <kbd>Right-click</kbd> zoom · <kbd>Wheel</kbd> camera · <kbd>Tab</kbd> scores · <kbd>Enter</kbd> chat · <kbd>M</kbd> mute.
-      Put the gun cross on the lead marker ◆ to hit. Guns overheat. Don't fly into the ground. Green rings repair.
+      <kbd>Мышь</kbd> управление (самолёт летит за прицелом) · <kbd>Клик</kbd> пулемёты · <kbd>W</kbd><kbd>S</kbd> тяга · <kbd>Shift</kbd> форсаж ·
+      <kbd>A</kbd><kbd>D</kbd> руль направления · <kbd>ПКМ</kbd> приближение · <kbd>Колесо</kbd> камера · <kbd>Tab</kbd> счёт · <kbd>Enter</kbd> чат · <kbd>M</kbd> звук.
+      Наведите перекрестие на маркер упреждения ◆, чтобы попасть. Пулемёты перегреваются. Не врежьтесь в землю. Зелёные кольца чинят самолёт.
     </div>
   </div>
 </div>
@@ -176,20 +176,20 @@ tr.dead td{opacity:.45}
   <div id="feed"></div>
   <div id="log"></div>
   <div id="chatlog"></div>
-  <input id="chatin" maxlength="80" placeholder="Say something…">
+  <input id="chatin" maxlength="80" placeholder="Написать сообщение…">
   <div id="center"></div>
   <div id="spec"></div>
   <div id="warn"></div>
   <div id="bottom">
     <div id="hpwrap">
-      <div id="hpline"><span id="myname">TANK</span><b id="hptxt">100</b></div>
+      <div id="hpline"><span id="myname">ПИЛОТ</span><b id="hptxt">100</b></div>
       <div id="hpbar"><div id="hpfill"></div></div>
       <div class="gauges">
-        <div><span>SPD</span><b id="spd">0</b></div>
-        <div><span>ALT</span><b id="alt">0</b></div>
-        <div class="g"><span>THR</span><i><em id="thr"></em></i></div>
-        <div class="g"><span>BOOST</span><i><em id="bst" style="background:#6fb7e8"></em></i></div>
-        <div class="g"><span>GUNS</span><i><em id="heat" style="background:#e3a53c"></em></i></div>
+        <div><span>СКОР</span><b id="spd">0</b></div>
+        <div><span>ВЫС</span><b id="alt">0</b></div>
+        <div class="g"><span>ТЯГА</span><i><em id="thr"></em></i></div>
+        <div class="g"><span>ФОРСАЖ</span><i><em id="bst" style="background:#6fb7e8"></em></i></div>
+        <div class="g"><span>НАГРЕВ</span><i><em id="heat" style="background:#e3a53c"></em></i></div>
       </div>
     </div>
   </div>
@@ -199,31 +199,31 @@ tr.dead td{opacity:.45}
 
 <div id="touch">
   <div id="joy"><div id="joyk"></div></div>
-  <button id="tzoom">BOOST</button>
-  <button id="tfire">FIRE</button>
+  <button id="tzoom">ФОРСАЖ</button>
+  <button id="tfire">ОГОНЬ</button>
 </div>
 
 <!-- PAUSE -->
 <div id="pause" class="screen">
   <div class="card">
-    <div class="logo" style="font-size:30px">PAUSED</div>
-    <div class="sub" style="margin-bottom:16px">Code <span id="pcode"></span></div>
-    <button class="btn" id="resumeBtn">Resume</button>
-    <button class="btn ghost" id="pLobbyBtn">Back to lobby (all players)</button>
-    <button class="btn ghost" id="pLeaveBtn">Leave game</button>
+    <div class="logo" style="font-size:30px">ПАУЗА</div>
+    <div class="sub" style="margin-bottom:16px">Код <span id="pcode"></span></div>
+    <button class="btn" id="resumeBtn">Продолжить</button>
+    <button class="btn ghost" id="pLobbyBtn">В лобби (для всех)</button>
+    <button class="btn ghost" id="pLeaveBtn">Покинуть игру</button>
   </div>
 </div>
 
 <!-- RESULT -->
 <div id="result" class="screen noise">
   <div class="card" style="text-align:center;width:min(620px,94vw)">
-    <div class="logo" id="resTitle" style="font-size:44px">VICTORY</div>
+    <div class="logo" id="resTitle" style="font-size:44px">ПОБЕДА</div>
     <div class="sub" id="resSub" style="margin-bottom:0"></div>
     <div id="resTable"></div>
     <div class="row">
-      <button class="btn ghost" id="resLeave">Leave</button>
-      <button class="btn ghost" id="resLobby" style="flex:1">Lobby</button>
-      <button class="btn" id="resAgain" style="flex:1">Play again</button>
+      <button class="btn ghost" id="resLeave">Выйти</button>
+      <button class="btn ghost" id="resLobby" style="flex:1">Лобби</button>
+      <button class="btn" id="resAgain" style="flex:1">Ещё раз</button>
     </div>
     <div class="small" id="resWait" style="margin-top:12px"></div>
   </div>

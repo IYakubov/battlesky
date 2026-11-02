@@ -38,7 +38,7 @@ function newCode() {
 
 function cleanName(n) {
   n = String(n || '').replace(/[<>]/g, '').trim().slice(0, 14);
-  return n || 'Tanker' + Math.floor(Math.random() * 90 + 10);
+  return n || 'Пилот' + Math.floor(Math.random() * 90 + 10);
 }
 
 function publicRoom(r) {
@@ -162,7 +162,7 @@ io.on('connection', socket => {
   }
 
   socket.on('create', (d, cb) => {
-    if (room) return cb && cb({ ok: false, err: 'Already in a room' });
+    if (room) return cb && cb({ ok: false, err: 'Вы уже в комнате' });
     const code = newCode();
     const r = {
       code, hostId: socket.id, players: new Map(), state: 'lobby', mode: 'team',
@@ -178,9 +178,9 @@ io.on('connection', socket => {
   socket.on('join', (d, cb) => {
     const code = String((d && d.code) || '').replace(/\D/g, '');
     const r = rooms.get(code);
-    if (!r) return cb && cb({ ok: false, err: 'No game with code ' + code });
-    if (r.players.size >= MAX_PLAYERS) return cb && cb({ ok: false, err: 'Room is full' });
-    if (room) return cb && cb({ ok: false, err: 'Already in a room' });
+    if (!r) return cb && cb({ ok: false, err: 'Нет игры с кодом ' + code });
+    if (r.players.size >= MAX_PLAYERS) return cb && cb({ ok: false, err: 'Комната заполнена' });
+    if (room) return cb && cb({ ok: false, err: 'Вы уже в комнате' });
     attach(r, d && d.name);
     cb && cb({ ok: true, code, id: socket.id });
     broadcastRoom(r);
