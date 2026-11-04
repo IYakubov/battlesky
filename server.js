@@ -19,12 +19,12 @@ const PORT = process.env.PORT || 3000;
 // ── game constants (keep in sync with client) ──
 const MAX_PLAYERS = 10;
 const MAX_HP = 100;
-const MAP_HALF = 450;
+const MAP_HALF = 2250;
 const ROUNDS_TO_WIN = 3;        // team battle: first to 3 rounds
 const FFA_KILLS_TO_WIN = 10;    // free-for-all: first to 10 kills
 const FFA_TIME = 8 * 60;        // seconds
 const FFA_RESPAWN = 5;          // seconds
-const CRATE_COUNT = 6;
+const CRATE_COUNT = 14;
 const CRATE_RESPAWN = 25;       // seconds
 const CRATE_HEAL = 35;
 
@@ -62,12 +62,12 @@ function spawnFor(r, p, idx, total) {
     // formation: wedge behind the leader, altitude staggered
     const side = p.team === 0 ? 1 : -1;
     const row = Math.floor((idx + 1) / 2), dir = idx % 2 ? 1 : -1;
-    const x = dir * row * 40, z = side * (MAP_HALF - 140 + row * 24);
+    const x = dir * row * 40, z = side * (900 + row * 24);
     return { x, y: 190 + row * 12, z, yaw: side > 0 ? Math.PI : 0 };
   }
   // FFA: random point on a big ring, facing centre
   const a = Math.random() * Math.PI * 2;
-  const rad = 240 + Math.random() * 100;
+  const rad = 600 + Math.random() * 300;
   const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
   return { x, y: 170 + Math.random() * 80, z, yaw: Math.atan2(-x, -z) };
 }

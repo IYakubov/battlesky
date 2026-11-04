@@ -7,7 +7,7 @@ const socket = io({ transports: ['websocket', 'polling'] });
 const $ = id => document.getElementById(id);
 
 // ── constants (keep in sync with server) ──
-const MAP_HALF = 450;
+const MAP_HALF = 2250;
 const MAX_HP = 100;
 const BULLET_SPEED = 680, FIRE_RATE = 9, BULLET_LIFE = 1.3, CONVERGE = 360;
 const HEAT_PER_SHOT = 0.05, COOL_RATE = 0.3, BASE_DMG = 7;
@@ -216,8 +216,8 @@ renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 const SKY = new THREE.Color(0xbcc6c8);
 scene.background = SKY;
-scene.fog = new THREE.Fog(SKY, 450, 1800);
-const camera = new THREE.PerspectiveCamera(65, 1, 0.5, 5000);
+scene.fog = new THREE.Fog(SKY, 700, 2600);
+const camera = new THREE.PerspectiveCamera(65, 1, 0.5, 6000);
 camera.position.set(0, 300, 700); camera.lookAt(0, 0, 0);
 
 const hemi = new THREE.HemisphereLight(0xe2e9ec, 0x4a4636, 1.3);
@@ -298,7 +298,7 @@ function buildWorld(seed) {
   const rand = mulberry32(seed);
   const n1 = makeNoise(rand), n2 = makeNoise(rand);
   const fbm = (x, z) => { let s = 0, a = 1, f = 1; for (let i = 0; i < 5; i++) { s += (n1(x * f, z * f) - .5) * a; a *= .5; f *= 2.03; } return s; };
-  const villages = [[0, 0], [-190, 150], [180, -160]];
+  const villages = [[0, 0], [-190, 150], [180, -160], [-1300, -900], [1250, 1050], [-1100, 1350], [1400, -1200], [600, -1700], [-1700, 300], [1750, 200], [-300, 1800], [300, -900]];
   const vH = villages.map(([x, z]) => fbm(x * 0.003 + 11, z * 0.003 - 7) * 95);
   H = (x, z) => {
     let h = fbm(x * 0.003 + 11, z * 0.003 - 7) * 95;
@@ -306,7 +306,7 @@ function buildWorld(seed) {
     const rv = Math.abs(z - Math.sin(x * 0.008) * 70 - 40);
     h = lerp(h, Math.min(h, -8), 1 - smooth(10, 70, rv));
     h += (n2(x * 0.02, z * 0.02) - .5) * 5;
-    for (let i = 0; i < 3; i++) h = lerp(h, vH[i], 1 - smooth(45, 95, Math.hypot(x - villages[i][0], z - villages[i][1])));
+    for (let i = 0; i < villages.length; i++) h = lerp(h, vH[i], 1 - smooth(45, 95, Math.hypot(x - villages[i][0], z - villages[i][1])));
     const e = Math.max(Math.abs(x), Math.abs(z)) - (MAP_HALF - 40);
     if (e > 0) { const ee = Math.min(e, 260); h += ee * ee * 0.0045 + ee * 0.7 + (n2(x * 0.01, z * 0.01) - .5) * ee * 0.8; }
     return h;
@@ -317,7 +317,7 @@ function buildWorld(seed) {
   const dummy = new THREE.Object3D();
 
   // ── terrain ──
-  const SIZE = MAP_HALF * 2 + 1100, SEG = 230;
+  const SIZE = MAP_HALF * 2 + 1100, SEG = 270;
   let geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
@@ -386,8 +386,8 @@ function buildWorld(seed) {
   const pineMat = new THREE.MeshStandardMaterial({ color: 0x4b5e34, roughness: 1, flatShading: true });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 1, flatShading: true });
   const trees = [];
-  const clusters = Array.from({ length: 16 }, () => [(rand() * 2 - 1) * (MAP_HALF - 60), (rand() * 2 - 1) * (MAP_HALF - 60)]);
-  for (let i = 0; i < 6000 && trees.length < 1400; i++) {
+  const clusters = Array.from({ length: 90 }, () => [(rand() * 2 - 1) * (MAP_HALF - 60), (rand() * 2 - 1) * (MAP_HALF - 60)]);
+  for (let i = 0; i < 20000 && trees.length < 3800; i++) {
     const c0 = clusters[Math.floor(rand() * clusters.length)];
     const x = c0[0] + (rand() - .5) * 150, z = c0[1] + (rand() - .5) * 150;
     const y = H(x, z);
@@ -403,7 +403,7 @@ function buildWorld(seed) {
   // ── clouds (one instanced mesh of puffs; fade when you fly through) ──
   const cloudMat = camFade(new THREE.MeshStandardMaterial({ color: 0xf6f6f2, roughness: 1, flatShading: true, emissive: 0x30302c }), 12, 60);
   const puffs = [];
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < 150; i++) {
     const cx = (rand() * 2 - 1) * (MAP_HALF + 200), cz = (rand() * 2 - 1) * (MAP_HALF + 200), cy = 230 + rand() * 170;
     const n = 4 + Math.floor(rand() * 5), sc = 14 + rand() * 18;
     for (let k = 0; k < n; k++) puffs.push([cx + (rand() - .5) * sc * 3.2, cy + (rand() - .5) * sc * 0.6, cz + (rand() - .5) * sc * 2, sc * (0.6 + rand() * 0.6)]);
@@ -416,8 +416,8 @@ function buildWorld(seed) {
   const ringGeo = new THREE.TorusGeometry(13, 1.2, 8, 30);
   const ringMat = new THREE.MeshStandardMaterial({ color: 0x8fe060, emissive: 0x3d7a20, roughness: .5 });
   const rings = [];
-  for (let i = 0; i < 6; i++) {
-    const a = i / 6 * TAU + 0.3 + rand() * 0.3, r = 110 + rand() * 200;
+  for (let i = 0; i < 14; i++) {
+    const a = i / 7 * TAU + 0.3 + rand() * 0.3, r = i < 7 ? 150 + rand() * 450 : 900 + rand() * 1100;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     const y = Math.max(H(x, z) + 70, 110 + rand() * 120);
     const m = new THREE.Mesh(ringGeo, ringMat); m.position.set(x, y, z); m.rotation.y = rand() * TAU;
@@ -1424,7 +1424,7 @@ function updateMarkers(dt) {
       else {
         const dx = t.pos.x - camera.position.x, dy = t.pos.y - camera.position.y, dz = t.pos.z - camera.position.z, d = Math.hypot(dx, dy, dz);
         _o[0] = camera.position.x; _o[1] = camera.position.y; _o[2] = camera.position.z; _d[0] = dx / d; _d[1] = dy / d; _d[2] = dz / d;
-        t.losVisible = d < 1500 && !castRay(_o, _d, d - 3, myId, { noPlanes: true, step: 12 });
+        t.losVisible = d < 2600 && !castRay(_o, _d, d - 3, myId, { noPlanes: true, step: 12 });
       }
     }
     const p2 = project(top);
