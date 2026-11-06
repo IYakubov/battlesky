@@ -9,11 +9,12 @@ const $ = id => document.getElementById(id);
 // ── constants (keep in sync with server) ──
 const MAP_HALF = 4500;
 // ground air-defence (ПВО) sites on mountain tops
-const SAM_RANGE = 1600, SAM_MIN_AGL = 90, SAM_LOCK = 2.4, SAM_CD = 7, SAM_DMG = 40;
+// they only engage jets that cross the border hills (out of the battle area)
+const SAM_RANGE = 3000, SAM_LOCK = 1.4, SAM_CD = 5, SAM_DMG = 40, EDGE = MAP_HALF - 40;
 const MAX_HP = 100;
 const BULLET_SPEED = 680, FIRE_RATE = 9, BULLET_LIFE = 1.3, CONVERGE = 360;
 const HEAT_PER_SHOT = 0.05, COOL_RATE = 0.3, BASE_DMG = 7;
-const MIN_SPEED = 60, CEILING = 560;
+const MIN_SPEED = 60, CEILING = 3000;
 // missiles: lock-on, chase for HOMING_TIME, then fly straight and self-destruct
 const MISSILE_MAX = 2, MISSILE_RELOAD = 8, MISSILE_SPEED = 360, MISSILE_TURN = 2.1, HOMING_TIME = 4, MISSILE_LIFE = 6.5;
 const MISSILE_DMG = 45, MISSILE_FUSE = 9, LOCK_TIME = 1.3, LOCK_CONE = 0.13, LOCK_KEEP = 0.24, LOCK_RANGE = 1100;
@@ -218,7 +219,7 @@ renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 const SKY = new THREE.Color(0xbcc6c8);
 scene.background = SKY;
-scene.fog = new THREE.Fog(SKY, 700, 2600);
+scene.fog = new THREE.Fog(SKY, 1000, 4300);
 const camera = new THREE.PerspectiveCamera(65, 1, 0.5, 6000);
 camera.position.set(0, 300, 700); camera.lookAt(0, 0, 0);
 
@@ -303,14 +304,9 @@ function buildWorld(seed) {
   const fbm = (x, z) => { let s = 0, a = 1, f = 1; for (let i = 0; i < 5; i++) { s += (n1(x * f, z * f) - .5) * a; a *= .5; f *= 2.03; } return s; };
   const villages = [[0, 0], [-190, 150], [180, -160], [-1300, -900], [1250, 1050], [-1100, 1350], [1400, -1200], [600, -1700], [-1700, 300], [1750, 200], [-300, 1800], [300, -900],
     [-2700, -1900], [2600, 2200], [-2300, 2800], [2900, -2500], [1300, -3500], [-3600, 700], [3600, 400], [-700, 3700], [800, -2600], [-3200, -3300], [3400, 3500]];
-  // big mountain ranges with valleys between them, kept out of the central battle area
-  const ridge = (x, z) => {
-    const m = (n2(x * 0.0007 + 3.3, z * 0.0007 - 5.1) - .45) + (n1(x * 0.0019 - 2, z * 0.0019 + 9) - .5) * 0.35;
-    return (m > 0 ? m * 430 : m * 50) * smooth(1200, 2000, Math.hypot(x, z));
-  };
-  const vH = villages.map(([x, z]) => fbm(x * 0.003 + 11, z * 0.003 - 7) * 95 + ridge(x, z));
+  const vH = villages.map(([x, z]) => fbm(x * 0.003 + 11, z * 0.003 - 7) * 95);
   H = (x, z) => {
-    let h = fbm(x * 0.003 + 11, z * 0.003 - 7) * 95 + ridge(x, z);
+    let h = fbm(x * 0.003 + 11, z * 0.003 - 7) * 95;
     // carve a river valley across the map
     const rv = Math.abs(z - Math.sin(x * 0.008) * 70 - 40);
     h = lerp(h, Math.min(h, -8), 1 - smooth(10, 70, rv));
@@ -442,18 +438,12 @@ function buildWorld(seed) {
   const samMat = new THREE.MeshStandardMaterial({ color: 0x5d6640, roughness: .8, flatShading: true });
   const samDark = new THREE.MeshStandardMaterial({ color: 0x2f3328, roughness: .7, flatShading: true });
   const samLamp = new THREE.MeshBasicMaterial({ color: 0xff3020 });
-  for (let i = 0; i < 700 && sams.length < 12; i++) {
-    const a = rand() * TAU, r = 1700 + rand() * (MAP_HALF - 2000);
-    let x = Math.cos(a) * r, z = Math.sin(a) * r, h = H(x, z);
-    for (let k = 0; k < 24; k++) {   // hill-climb to the peak
-      let bx = x, bz = z, bh = h;
-      for (const [dx, dz] of [[40, 0], [-40, 0], [0, 40], [0, -40], [28, 28], [-28, 28], [28, -28], [-28, -28]]) {
-        const hh = H(x + dx, z + dz); if (hh > bh) { bh = hh; bx = x + dx; bz = z + dz; }
-      }
-      if (bh === h) break; x = bx; z = bz; h = bh;
-    }
-    if (h < 70 || Math.max(Math.abs(x), Math.abs(z)) > MAP_HALF - 150 || Math.hypot(x, z) < 1500) continue;
-    if (sams.some(q => Math.hypot(q.x - x, q.z - z) < 1300)) continue;
+  const SAM_SIDE = 6, ring = EDGE + 190;
+  for (let i = 0; i < SAM_SIDE * 4; i++) {
+    const side = i / SAM_SIDE | 0, f = ((i % SAM_SIDE) + 0.5) / SAM_SIDE * 2 - 1;
+    let x = [f * ring, ring, -f * ring, -ring][side], z = [-ring, f * ring, ring, -f * ring][side];
+    x += (rand() - .5) * 200; if (side % 2) x = Math.sign(x) * ring; else z = Math.sign(z) * ring;
+    const h = H(x, z);
     const g = new THREE.Group(); g.position.set(x, h - 0.5, z);
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(15, 17, 2.5, 10), padMat); pad.position.y = 0.6; pad.receiveShadow = true; g.add(pad);
     for (let k = 0; k < 9; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(5, 1.4, 1.6), padMat); const aa = k / 9 * TAU; b.position.set(Math.cos(aa) * 16, 2.3, Math.sin(aa) * 16); b.rotation.y = -aa + Math.PI / 2; g.add(b); }
@@ -468,7 +458,6 @@ function buildWorld(seed) {
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 4), samLamp); lamp.position.set(7, 12.8, 0); g.add(lamp);
     group.add(g);
     sams.push({ x, z, y: h, g, turn, rack, radar, lamp, top: new THREE.Vector3(x - 3, h + 7, z), lockT: 0, cd: 2 + rand() * 3, spin: rand() * TAU });
-    boxes.push({ x, z, y0: h - 2, y1: h + 6, hx: 14, hz: 14 });
   }
 
   scene.add(group);
@@ -898,9 +887,11 @@ function updateMe(dt, now) {
   // ── steering: plane chases the mouse-aim direction ──
   let desH = camYaw, desP = camPitch;
   warnText = '';
-  const outside = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) > MAP_HALF - 30;
-  if (outside) { desH = Math.atan2(-t.pos.x, -t.pos.z); desP = 0.05; warnText = 'ВЕРНИТЕСЬ В ЗОНУ БОЯ'; }
-  if (t.pos.y > CEILING) { desP = Math.min(desP, -0.2); warnText = 'ПРЕДЕЛ ВЫСОТЫ'; }
+  const edgeD = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) - EDGE;
+  if (edgeD > 450) { desH = Math.atan2(-t.pos.x, -t.pos.z); desP = 0.05; }
+  if (edgeD > 0) warnText = 'ВНЕ ЗОНЫ — ВАС ВИДИТ ПВО';
+  else if (edgeD > -300) warnText = 'ГРАНИЦА ЗОНЫ: ПВО';
+  if (t.pos.y > CEILING) desP = Math.min(desP, -0.15);
   const agl = t.pos.y - H(t.pos.x, t.pos.z);
   const turnK = Math.max(0.35, Math.min(1, (t.speed - 50) / 110)) * (boosting ? 0.85 : 1);
   const maxYaw = 1.25 * turnK, maxPitch = 1.15 * turnK;
@@ -1095,7 +1086,6 @@ function segDist(p, s, c) {
 // ── ПВО: each client runs the SAM sites against its own jet only ──
 const SAM_HOME = 7, SAM_LIFE = 10, SAM_TURN = 1.7, SAM_SPEED = 400;
 let samLock = 0, samSeq = 0;
-const _so = [0, 0, 0], _sd = [0, 0, 0];
 function updateSams(dt) {
   if (!world || !world.sams) return;
   const now = performance.now();
@@ -1110,12 +1100,9 @@ function updateSams(dt) {
     let sees = false;
     if (live) {
       const dx = t.pos.x - sm.x, dz = t.pos.z - sm.z, hd = Math.hypot(dx, dz);
-      const agl = t.pos.y - Math.max(H(t.pos.x, t.pos.z), -6.5);
-      if (hd < SAM_RANGE && agl > SAM_MIN_AGL) {
-        _so[0] = sm.top.x; _so[1] = sm.top.y + 4; _so[2] = sm.top.z;
-        const ex = t.pos.x - _so[0], ey = t.pos.y - _so[1], ez = t.pos.z - _so[2], d = Math.hypot(ex, ey, ez);
-        _sd[0] = ex / d; _sd[1] = ey / d; _sd[2] = ez / d;
-        sees = !castRay(_so, _sd, d - 6, myId, { noPlanes: true, step: 10 });
+      const out = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) > EDGE;
+      if (out && hd < SAM_RANGE) {
+        sees = true;   // border radar sees anything that leaves the battle area
       }
       if (sees) {
         sm.turn.rotation.y += (Math.atan2(dx, dz) - sm.turn.rotation.y) * Math.min(1, dt * 3);
@@ -1265,7 +1252,7 @@ function drawThreats(dt) {
       hctx.restore();
     }
   } else if (samLock) {
-    el.style.display = 'block'; el.className = 'lock'; el.textContent = samLock === 2 ? 'ПВО: ЗАХВАТ! НИЖЕ!' : 'ПВО: РАДАР';
+    el.style.display = 'block'; el.className = 'lock'; el.textContent = samLock === 2 ? 'ПВО: ЗАХВАТ! ВЕРНИТЕСЬ В ЗОНУ!' : 'ПВО: РАДАР';
     if (warnBeepT <= 0) { audio.tone(samLock === 2 ? 900 : 560, 0.08, 0.05); warnBeepT = samLock === 2 ? 0.16 : 0.5; }
   } else if (locked) {
     el.style.display = 'block'; el.className = 'lock'; el.textContent = locked === 2 ? 'ВАС ЗАХВАТИЛИ' : 'ВАС ЗАХВАТЫВАЮТ';
@@ -1572,8 +1559,6 @@ function drawMinimap() {
   const P = (x, z) => [(x + MAP_HALF) * k, (z + MAP_HALF) * k];
   for (const sm of world.sams) {
     const [x, y] = P(sm.x, sm.z);
-    mctx.fillStyle = 'rgba(255,60,40,.10)'; mctx.beginPath(); mctx.arc(x, y, SAM_RANGE * k, 0, TAU); mctx.fill();
-    mctx.strokeStyle = sm.lockT > 0 ? 'rgba(255,70,50,.9)' : 'rgba(255,70,50,.35)'; mctx.lineWidth = 1.5; mctx.stroke();
     mctx.fillStyle = '#ff4a36'; mctx.beginPath(); mctx.moveTo(x, y - 6); mctx.lineTo(x + 5, y + 4); mctx.lineTo(x - 5, y + 4); mctx.closePath(); mctx.fill();
   }
   for (const c of world.crates) if (c.avail) { const [x, y] = P(c.x, c.z); mctx.strokeStyle = '#9bff7a'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(x, y, 6, 0, TAU); mctx.stroke(); }
