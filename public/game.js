@@ -7,7 +7,9 @@ const socket = io({ transports: ['websocket', 'polling'] });
 const $ = id => document.getElementById(id);
 
 // ── constants (keep in sync with server) ──
-const MAP_HALF = 2250;
+const MAP_HALF = 4500;
+// ground air-defence (ПВО) sites on mountain tops
+const SAM_RANGE = 1600, SAM_MIN_AGL = 90, SAM_LOCK = 2.4, SAM_CD = 7, SAM_DMG = 40;
 const MAX_HP = 100;
 const BULLET_SPEED = 680, FIRE_RATE = 9, BULLET_LIFE = 1.3, CONVERGE = 360;
 const HEAT_PER_SHOT = 0.05, COOL_RATE = 0.3, BASE_DMG = 7;
@@ -273,6 +275,7 @@ function makeNoise(rand) {
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 let H = () => 0;
+let terrainTop = 260, boxTop = 40;
 
 // dissolve geometry close to the camera (screen-door dither), so clouds/trees never block the view
 function camFade(mat, near, far) {
@@ -298,10 +301,16 @@ function buildWorld(seed) {
   const rand = mulberry32(seed);
   const n1 = makeNoise(rand), n2 = makeNoise(rand);
   const fbm = (x, z) => { let s = 0, a = 1, f = 1; for (let i = 0; i < 5; i++) { s += (n1(x * f, z * f) - .5) * a; a *= .5; f *= 2.03; } return s; };
-  const villages = [[0, 0], [-190, 150], [180, -160], [-1300, -900], [1250, 1050], [-1100, 1350], [1400, -1200], [600, -1700], [-1700, 300], [1750, 200], [-300, 1800], [300, -900]];
-  const vH = villages.map(([x, z]) => fbm(x * 0.003 + 11, z * 0.003 - 7) * 95);
+  const villages = [[0, 0], [-190, 150], [180, -160], [-1300, -900], [1250, 1050], [-1100, 1350], [1400, -1200], [600, -1700], [-1700, 300], [1750, 200], [-300, 1800], [300, -900],
+    [-2700, -1900], [2600, 2200], [-2300, 2800], [2900, -2500], [1300, -3500], [-3600, 700], [3600, 400], [-700, 3700], [800, -2600], [-3200, -3300], [3400, 3500]];
+  // big mountain ranges with valleys between them, kept out of the central battle area
+  const ridge = (x, z) => {
+    const m = (n2(x * 0.0007 + 3.3, z * 0.0007 - 5.1) - .45) + (n1(x * 0.0019 - 2, z * 0.0019 + 9) - .5) * 0.35;
+    return (m > 0 ? m * 430 : m * 50) * smooth(1200, 2000, Math.hypot(x, z));
+  };
+  const vH = villages.map(([x, z]) => fbm(x * 0.003 + 11, z * 0.003 - 7) * 95 + ridge(x, z));
   H = (x, z) => {
-    let h = fbm(x * 0.003 + 11, z * 0.003 - 7) * 95;
+    let h = fbm(x * 0.003 + 11, z * 0.003 - 7) * 95 + ridge(x, z);
     // carve a river valley across the map
     const rv = Math.abs(z - Math.sin(x * 0.008) * 70 - 40);
     h = lerp(h, Math.min(h, -8), 1 - smooth(10, 70, rv));
@@ -317,11 +326,13 @@ function buildWorld(seed) {
   const dummy = new THREE.Object3D();
 
   // ── terrain ──
-  const SIZE = MAP_HALF * 2 + 1100, SEG = 270;
+  const SIZE = MAP_HALF * 2 + 1100, SEG = 310;
   let geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, H(pos.getX(i), pos.getZ(i)));
+  terrainTop = 0;
+  for (let i = 0; i < pos.count; i++) { const hh = H(pos.getX(i), pos.getZ(i)); pos.setY(i, hh); if (hh > terrainTop && Math.max(Math.abs(pos.getX(i)), Math.abs(pos.getZ(i))) < MAP_HALF + 300) terrainTop = hh; }
+  terrainTop += 15;
   geo = geo.toNonIndexed();
   geo.computeVertexNormals();
   const p2 = geo.attributes.position, nrm = geo.attributes.normal;
@@ -386,8 +397,8 @@ function buildWorld(seed) {
   const pineMat = new THREE.MeshStandardMaterial({ color: 0x4b5e34, roughness: 1, flatShading: true });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 1, flatShading: true });
   const trees = [];
-  const clusters = Array.from({ length: 90 }, () => [(rand() * 2 - 1) * (MAP_HALF - 60), (rand() * 2 - 1) * (MAP_HALF - 60)]);
-  for (let i = 0; i < 20000 && trees.length < 3800; i++) {
+  const clusters = Array.from({ length: 170 }, () => [(rand() * 2 - 1) * (MAP_HALF - 60), (rand() * 2 - 1) * (MAP_HALF - 60)]);
+  for (let i = 0; i < 26000 && trees.length < 4600; i++) {
     const c0 = clusters[Math.floor(rand() * clusters.length)];
     const x = c0[0] + (rand() - .5) * 150, z = c0[1] + (rand() - .5) * 150;
     const y = H(x, z);
@@ -403,8 +414,8 @@ function buildWorld(seed) {
   // ── clouds (one instanced mesh of puffs; fade when you fly through) ──
   const cloudMat = camFade(new THREE.MeshStandardMaterial({ color: 0xf6f6f2, roughness: 1, flatShading: true, emissive: 0x30302c }), 12, 60);
   const puffs = [];
-  for (let i = 0; i < 150; i++) {
-    const cx = (rand() * 2 - 1) * (MAP_HALF + 200), cz = (rand() * 2 - 1) * (MAP_HALF + 200), cy = 230 + rand() * 170;
+  for (let i = 0; i < 230; i++) {
+    const cx = (rand() * 2 - 1) * (MAP_HALF + 200), cz = (rand() * 2 - 1) * (MAP_HALF + 200), cy = Math.max(230 + rand() * 170, H(cx, cz) + 120);
     const n = 4 + Math.floor(rand() * 5), sc = 14 + rand() * 18;
     for (let k = 0; k < n; k++) puffs.push([cx + (rand() - .5) * sc * 3.2, cy + (rand() - .5) * sc * 0.6, cz + (rand() - .5) * sc * 2, sc * (0.6 + rand() * 0.6)]);
   }
@@ -416,8 +427,8 @@ function buildWorld(seed) {
   const ringGeo = new THREE.TorusGeometry(13, 1.2, 8, 30);
   const ringMat = new THREE.MeshStandardMaterial({ color: 0x8fe060, emissive: 0x3d7a20, roughness: .5 });
   const rings = [];
-  for (let i = 0; i < 14; i++) {
-    const a = i / 7 * TAU + 0.3 + rand() * 0.3, r = i < 7 ? 150 + rand() * 450 : 900 + rand() * 1100;
+  for (let i = 0; i < 22; i++) {
+    const a = i / 7 * TAU + 0.3 + rand() * 0.3, r = i < 7 ? 150 + rand() * 450 : i < 14 ? 900 + rand() * 1100 : 2200 + rand() * 1700;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     const y = Math.max(H(x, z) + 70, 110 + rand() * 120);
     const m = new THREE.Mesh(ringGeo, ringMat); m.position.set(x, y, z); m.rotation.y = rand() * TAU;
@@ -425,8 +436,44 @@ function buildWorld(seed) {
     rings.push({ x, y, z, mesh: m, avail: true });
   }
 
+  // ── ПВО sites: climb to mountain peaks, keep them spread out ──
+  const sams = [];
+  const padMat = new THREE.MeshStandardMaterial({ color: 0x8a867c, roughness: .9, flatShading: true });
+  const samMat = new THREE.MeshStandardMaterial({ color: 0x5d6640, roughness: .8, flatShading: true });
+  const samDark = new THREE.MeshStandardMaterial({ color: 0x2f3328, roughness: .7, flatShading: true });
+  const samLamp = new THREE.MeshBasicMaterial({ color: 0xff3020 });
+  for (let i = 0; i < 700 && sams.length < 12; i++) {
+    const a = rand() * TAU, r = 1700 + rand() * (MAP_HALF - 2000);
+    let x = Math.cos(a) * r, z = Math.sin(a) * r, h = H(x, z);
+    for (let k = 0; k < 24; k++) {   // hill-climb to the peak
+      let bx = x, bz = z, bh = h;
+      for (const [dx, dz] of [[40, 0], [-40, 0], [0, 40], [0, -40], [28, 28], [-28, 28], [28, -28], [-28, -28]]) {
+        const hh = H(x + dx, z + dz); if (hh > bh) { bh = hh; bx = x + dx; bz = z + dz; }
+      }
+      if (bh === h) break; x = bx; z = bz; h = bh;
+    }
+    if (h < 70 || Math.max(Math.abs(x), Math.abs(z)) > MAP_HALF - 150 || Math.hypot(x, z) < 1500) continue;
+    if (sams.some(q => Math.hypot(q.x - x, q.z - z) < 1300)) continue;
+    const g = new THREE.Group(); g.position.set(x, h - 0.5, z);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(15, 17, 2.5, 10), padMat); pad.position.y = 0.6; pad.receiveShadow = true; g.add(pad);
+    for (let k = 0; k < 9; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(5, 1.4, 1.6), padMat); const aa = k / 9 * TAU; b.position.set(Math.cos(aa) * 16, 2.3, Math.sin(aa) * 16); b.rotation.y = -aa + Math.PI / 2; g.add(b); }
+    const base = new THREE.Mesh(new THREE.BoxGeometry(6, 2.2, 9), samMat); base.position.set(-3, 3, 0); base.castShadow = true; g.add(base);
+    const turn = new THREE.Group(); turn.position.set(-3, 4.3, 0); g.add(turn);
+    const rack = new THREE.Group(); rack.rotation.x = -0.7; turn.add(rack);
+    for (let k = 0; k < 4; k++) { const tube = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.3, 8.5), samMat); tube.position.set((k % 2 ? 0.75 : -0.75), (k < 2 ? 0.75 : -0.75) + 1.2, 1.5); tube.castShadow = true; rack.add(tube);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 0.2), samDark); cap.position.set(tube.position.x, tube.position.y, 5.8); rack.add(cap); }
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 9, 6), samDark); mast.position.set(7, 6.5, 0); g.add(mast);
+    const radar = new THREE.Group(); radar.position.set(7, 11.2, 0); g.add(radar);
+    const dish = new THREE.Mesh(new THREE.BoxGeometry(7, 2.6, 0.4), samMat); dish.position.z = 0.6; dish.rotation.x = -0.25; radar.add(dish);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 4), samLamp); lamp.position.set(7, 12.8, 0); g.add(lamp);
+    group.add(g);
+    sams.push({ x, z, y: h, g, turn, rack, radar, lamp, top: new THREE.Vector3(x - 3, h + 7, z), lockT: 0, cd: 2 + rand() * 3, spin: rand() * TAU });
+    boxes.push({ x, z, y0: h - 2, y1: h + 6, hx: 14, hz: 14 });
+  }
+
   scene.add(group);
-  world = { group, boxes, crates: rings, trees, villages, seed };
+  boxTop = boxes.reduce((m, b) => Math.max(m, b.y1), 40) + 1;
+  world = { group, boxes, crates: rings, trees, villages, seed, sams };
   buildMinimapBase();
 }
 
@@ -597,9 +644,9 @@ function castRay(o, d, maxT, ignoreId, opts = {}) {
   if (!opts.noTerrain) {
     // fast path: only march when the segment can reach the ground
     const yEnd = o[1] + d[1] * maxT;
-    if (Math.min(o[1], yEnd) < 260) { const tt = rayTerrain(o, d, maxT, opts.step || 4); if (tt !== null) { bt = tt; best = { t: tt, kind: 'terrain' }; } }
+    if (Math.min(o[1], yEnd) < terrainTop) { const tt = rayTerrain(o, d, maxT, opts.step || 4); if (tt !== null) { bt = tt; best = { t: tt, kind: 'terrain' }; } }
   }
-  if (Math.min(o[1], o[1] + d[1] * bt) < 40) for (const b of world.boxes) {
+  if (Math.min(o[1], o[1] + d[1] * bt) < boxTop) for (const b of world.boxes) {
     const r = rayAABB(o, d, [b.x - b.hx, b.y0, b.z - b.hz], [b.x + b.hx, b.y1, b.z + b.hz], bt);
     if (r && r.t < bt) { bt = r.t; best = { t: r.t, kind: 'obj' }; }
   }
@@ -1035,7 +1082,8 @@ function detonate(i, pt, hitPlane) {
   audio.at('hit', pt, hitPlane ? 1 : 0.7, 0.75);
   if (m.mine) {
     socket.emit('mboom', { id: m.id, pt: [+pt.x.toFixed(1), +pt.y.toFixed(1), +pt.z.toFixed(1)] });
-    if (hitPlane) socket.emit('hit', { target: hitPlane.id, dmg: MISSILE_DMG, pt: [+pt.x.toFixed(1), +pt.y.toFixed(1), +pt.z.toFixed(1)], zone: 'missile', m: true });
+    if (hitPlane && m.sam) socket.emit('samhit', { pt: [+pt.x.toFixed(1), +pt.y.toFixed(1), +pt.z.toFixed(1)] });
+    else if (hitPlane) socket.emit('hit', { target: hitPlane.id, dmg: MISSILE_DMG, pt: [+pt.x.toFixed(1), +pt.y.toFixed(1), +pt.z.toFixed(1)], zone: 'missile', m: true });
   }
 }
 // closest distance from point c to segment p -> p+s
@@ -1044,14 +1092,60 @@ function segDist(p, s, c) {
   const k = len2 > 0 ? Math.max(0, Math.min(1, _m3.copy(c).sub(p).dot(s) / len2)) : 0;
   return _m3.copy(p).addScaledVector(s, k).distanceTo(c);
 }
+// ── ПВО: each client runs the SAM sites against its own jet only ──
+const SAM_HOME = 7, SAM_LIFE = 10, SAM_TURN = 1.7, SAM_SPEED = 400;
+let samLock = 0, samSeq = 0;
+const _so = [0, 0, 0], _sd = [0, 0, 0];
+function updateSams(dt) {
+  if (!world || !world.sams) return;
+  const now = performance.now();
+  const t = myPlane();
+  const live = inGame && t && t.alive && !t.crashed && now > roundStartAt;
+  let lvl = 0;
+  for (const sm of world.sams) {
+    sm.spin += dt * (sm.lockT > 0 ? 4 : 1.2);
+    sm.radar.rotation.y = sm.spin;
+    sm.lamp.visible = sm.lockT > 0 ? (now % 300 < 150) : (now % 1600 < 120);
+    sm.cd -= dt;
+    let sees = false;
+    if (live) {
+      const dx = t.pos.x - sm.x, dz = t.pos.z - sm.z, hd = Math.hypot(dx, dz);
+      const agl = t.pos.y - Math.max(H(t.pos.x, t.pos.z), -6.5);
+      if (hd < SAM_RANGE && agl > SAM_MIN_AGL) {
+        _so[0] = sm.top.x; _so[1] = sm.top.y + 4; _so[2] = sm.top.z;
+        const ex = t.pos.x - _so[0], ey = t.pos.y - _so[1], ez = t.pos.z - _so[2], d = Math.hypot(ex, ey, ez);
+        _sd[0] = ex / d; _sd[1] = ey / d; _sd[2] = ez / d;
+        sees = !castRay(_so, _sd, d - 6, myId, { noPlanes: true, step: 10 });
+      }
+      if (sees) {
+        sm.turn.rotation.y += (Math.atan2(dx, dz) - sm.turn.rotation.y) * Math.min(1, dt * 3);
+        sm.lockT += dt;
+      } else sm.lockT = Math.max(0, sm.lockT - dt * 1.5);
+    } else sm.lockT = 0;
+    if (sm.lockT > 0) lvl = Math.max(lvl, sm.lockT > SAM_LOCK * 0.5 ? 2 : 1);
+    if (sees && sm.lockT >= SAM_LOCK && sm.cd <= 0 && !missiles.some(m => m.samIdx === sm && m.age < SAM_HOME)) {
+      sm.cd = SAM_CD; sm.lockT = SAM_LOCK * 0.4;
+      const o = sm.top.clone().add(new THREE.Vector3(Math.sin(sm.turn.rotation.y) * 4, 4, Math.cos(sm.turn.rotation.y) * 4));
+      const vel = new THREE.Vector3(Math.sin(sm.turn.rotation.y) * 45, 90, Math.cos(sm.turn.rotation.y) * 45);
+      const id = myId + ':s' + (samSeq++);
+      spawnMissile({ id, owner: 'sam', target: myId, pos: o, vel, mine: true, sam: true, samIdx: sm, home: SAM_HOME, life: SAM_LIFE, turn: SAM_TURN, spd: SAM_SPEED });
+      socket.emit('missile', { id, o: [+o.x.toFixed(1), +o.y.toFixed(1), +o.z.toFixed(1)], v: [+vel.x.toFixed(1), +vel.y.toFixed(1), +vel.z.toFixed(1)], sam: 1 });
+      audio.at('shoot', o, 2.2, 0.45); audio.whooshAt(o, 1.3);
+      particles.explosion(o, 0.35);
+      logMsg('<b style="color:#ff6a50">ПВО: пуск ракеты!</b>');
+    }
+  }
+  samLock = live ? lvl : 0;
+}
 function updateMissiles(dt) {
   for (let i = missiles.length - 1; i >= 0; i--) {
     const m = missiles[i];
     m.age += dt;
-    let sp = Math.min(MISSILE_SPEED, m.vel.length() + 170 * dt);
+    const homeT = m.home || HOMING_TIME;
+    let sp = Math.min(m.spd || MISSILE_SPEED, m.vel.length() + 170 * dt);
     const dir = _m1.copy(m.vel).normalize();
     // homing phase: chase the target (or a flare) with a limited turn rate, so hard turns can dodge
-    if (m.age < HOMING_TIME && m.age > 0.25) {
+    if (m.age < homeT && m.age > (m.sam ? 0.8 : 0.25)) {
       let aimPos = null;
       if (m.decoy) aimPos = m.decoy.pos;
       else if (m.target) {
@@ -1064,7 +1158,7 @@ function updateMissiles(dt) {
       if (aimPos) {
         const want = _m2.copy(aimPos).sub(m.pos).normalize();
         const ang = Math.acos(Math.max(-1, Math.min(1, dir.dot(want))));
-        if (ang > 1e-4) dir.lerp(want, Math.min(1, MISSILE_TURN * dt / ang)).normalize();
+        if (ang > 1e-4) dir.lerp(want, Math.min(1, (m.turn || MISSILE_TURN) * dt / ang)).normalize();
       }
     }
     m.vel.copy(dir).multiplyScalar(sp);
@@ -1073,14 +1167,17 @@ function updateMissiles(dt) {
     // proximity fuse (owner's missile decides damage; others just show the blast)
     for (const pl of planes.values()) {
       if (pl.id === m.owner || !pl.alive) continue;
-      if (m.mine && !isEnemy(pl.id)) continue;
-      if (!m.mine && pl.id !== m.target) continue;
+      if (m.sam) { if (pl.id !== m.target) continue; }
+      else {
+        if (m.mine && !isEnemy(pl.id)) continue;
+        if (!m.mine && pl.id !== m.target) continue;
+      }
       if (segDist(m.pos, step, pl.pos) < MISSILE_FUSE) { hit = pl; break; }
     }
     if (hit) { detonate(i, _m3.copy(hit.pos).lerp(m.pos, 0.3).clone(), m.mine ? hit : null); continue; }
     m.pos.add(step);
     if (m.pos.y < Math.max(H(m.pos.x, m.pos.z), -6.5) + 0.5) { detonate(i, m.pos.clone(), null); continue; }
-    if (m.age > MISSILE_LIFE) { detonate(i, m.pos.clone(), null); continue; }   // self-destruct
+    if (m.age > (m.life || MISSILE_LIFE)) { detonate(i, m.pos.clone(), null); continue; }   // self-destruct
     m.mesh.position.copy(m.pos);
     m.mesh.lookAt(_m3.copy(m.pos).add(m.vel));
     m.trailT -= dt;
@@ -1118,7 +1215,7 @@ socket.on('flare', id => {
   audio.at('ricochet', base, 0.5, 1.8);
   // missiles chasing this plane go for the flare, unless they are already too close
   for (const m of missiles) {
-    if (m.target !== id || m.decoy || m.age >= HOMING_TIME) continue;
+    if (m.target !== id || m.decoy || m.age >= (m.home || HOMING_TIME)) continue;
     const d = m.pos.distanceTo(pl.pos);
     if (d > 55 && d < FLARE_DECOY_RANGE) m.decoy = decoy;
   }
@@ -1127,7 +1224,8 @@ socket.on('flare', id => {
 socket.on('missile', (owner, m) => {
   if (!world || !inGame) return;
   const pos = new THREE.Vector3(...m.o);
-  spawnMissile({ id: m.id, owner, target: m.target, pos, vel: new THREE.Vector3(...m.v), mine: false });
+  if (m.sam) spawnMissile({ id: m.id, owner: 'sam', target: owner, pos, vel: new THREE.Vector3(...m.v), mine: false, sam: true, home: SAM_HOME, life: SAM_LIFE, turn: SAM_TURN, spd: SAM_SPEED });
+  else spawnMissile({ id: m.id, owner, target: m.target, pos, vel: new THREE.Vector3(...m.v), mine: false });
   audio.at('shoot', pos, 1.6, 0.6); audio.whooshAt(pos, 1);
 });
 socket.on('mboom', (owner, m) => {
@@ -1143,7 +1241,7 @@ function drawThreats(dt) {
   const t = myPlane();
   const el = $('mwarn');
   if (!inGame || !t || !t.alive) { el.style.display = 'none'; return; }
-  const incoming = missiles.filter(m => m.target === myId && !m.decoy && m.age < HOMING_TIME);
+  const incoming = missiles.filter(m => m.target === myId && !m.decoy && m.age < (m.home || HOMING_TIME));
   for (const [sid] of lockedBy) { const s = planes.get(sid); if (!s || !s.alive) lockedBy.delete(sid); }
   let locked = 0; for (const v of lockedBy.values()) locked = Math.max(locked, v);
   warnBeepT -= dt;
@@ -1166,6 +1264,9 @@ function drawThreats(dt) {
       hctx.fillStyle = '#ff4a36'; hctx.beginPath(); hctx.moveTo(22, 0); hctx.lineTo(-10, -14); hctx.lineTo(-4, 0); hctx.lineTo(-10, 14); hctx.closePath(); hctx.fill();
       hctx.restore();
     }
+  } else if (samLock) {
+    el.style.display = 'block'; el.className = 'lock'; el.textContent = samLock === 2 ? 'ПВО: ЗАХВАТ! НИЖЕ!' : 'ПВО: РАДАР';
+    if (warnBeepT <= 0) { audio.tone(samLock === 2 ? 900 : 560, 0.08, 0.05); warnBeepT = samLock === 2 ? 0.16 : 0.5; }
   } else if (locked) {
     el.style.display = 'block'; el.className = 'lock'; el.textContent = locked === 2 ? 'ВАС ЗАХВАТИЛИ' : 'ВАС ЗАХВАТЫВАЮТ';
     if (locked === 2 && warnBeepT <= 0) { audio.tone(700, 0.08, 0.05); warnBeepT = 0.35; }
@@ -1469,6 +1570,12 @@ function drawMinimap() {
   mctx.clearRect(0, 0, S, S);
   mctx.drawImage(mmBase, 0, 0);
   const P = (x, z) => [(x + MAP_HALF) * k, (z + MAP_HALF) * k];
+  for (const sm of world.sams) {
+    const [x, y] = P(sm.x, sm.z);
+    mctx.fillStyle = 'rgba(255,60,40,.10)'; mctx.beginPath(); mctx.arc(x, y, SAM_RANGE * k, 0, TAU); mctx.fill();
+    mctx.strokeStyle = sm.lockT > 0 ? 'rgba(255,70,50,.9)' : 'rgba(255,70,50,.35)'; mctx.lineWidth = 1.5; mctx.stroke();
+    mctx.fillStyle = '#ff4a36'; mctx.beginPath(); mctx.moveTo(x, y - 6); mctx.lineTo(x + 5, y + 4); mctx.lineTo(x - 5, y + 4); mctx.closePath(); mctx.fill();
+  }
   for (const c of world.crates) if (c.avail) { const [x, y] = P(c.x, c.z); mctx.strokeStyle = '#9bff7a'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(x, y, 6, 0, TAU); mctx.stroke(); }
   for (const t of planes.values()) {
     if (!t.vis.g.visible || (!t.alive && !t.falling)) continue;
@@ -1548,7 +1655,7 @@ socket.on('dmg', d => {
       requestAnimationFrame(() => { $('flash').style.transition = 'box-shadow .5s'; $('flash').style.boxShadow = 'inset 0 0 140px rgba(220,40,30,0)'; });
     }
   } else if (now - (pl && pl.hitSnd || 0) > 120) { if (pl) pl.hitSnd = now; audio.at('hit', pt, 0.4, 1.5); }
-  if (d.by === myId) {
+  if (d.by === myId && d.target !== myId) {
     const a = dmgAcc.get(d.target) || { n: 0, pt, t: now, zone: d.zone };
     a.n += d.dmg; a.pt = pt; if (d.zone === 'engine' || d.zone === 'cockpit' || d.zone === 'missile') a.zone = d.zone;
     dmgAcc.set(d.target, a);
@@ -1571,16 +1678,17 @@ socket.on('kill', d => {
   const pl = planes.get(d.target);
   if (pl) {
     if (d.crash) pl.crashed = true;
+    if (d.target === myId) samLock = 0;
     startFalling(pl);
     if (!d.crash) { particles.explosion(pl.pos, 0.8); audio.at('hit', pl.pos, 0.9, 0.8); }
     if (d.target === myId) { myDeathAt = performance.now(); shake = 1; audio.engineOff(); zoom = false; specId = d.by !== myId ? d.by : null; resetLock(); lockedBy.clear(); }
     if (lock.id === d.target) { lock.id = null; lock.t = 0; lock.locked = false; }
   }
-  const verb = d.crash ? (d.by === d.target ? 'разбился' : 'загнал в землю') : '';
+  const verb = d.sam ? 'сбит ПВО' : d.crash ? (d.by === d.target ? 'разбился' : 'загнал в землю') : '';
   if (d.by === d.target) feed(`<b style="color:${nameCol(d.target)}">${nameOf(d.target)}</b><span class="x">${verb || '✕'}</span>`);
   else feed(`<b style="color:${nameCol(d.by)}">${nameOf(d.by)}</b><span class="x">${verb || '✕'}</span><b style="color:${nameCol(d.target)}">${nameOf(d.target)}</b>`);
   if (d.by === myId && d.target !== myId) centerMsg('СБИТ', nameOf(d.target).toUpperCase(), 1500, '#ff7a68');
-  if (d.target === myId) centerMsg(d.crash && d.by === myId ? 'ВЫ РАЗБИЛИСЬ' : 'ВАС СБИЛИ', d.by !== myId ? 'пилот ' + nameOf(d.by) : '', 2500, '#ff7a68');
+  if (d.target === myId) centerMsg(d.sam && d.by === myId ? 'СБИТ ПВО' : d.crash && d.by === myId ? 'ВЫ РАЗБИЛИСЬ' : 'ВАС СБИЛИ', d.by !== myId ? 'пилот ' + nameOf(d.by) : '', 2500, '#ff7a68');
 });
 socket.on('roundEnd', d => {
   const meP = me();
@@ -1687,6 +1795,7 @@ function frame(now) {
     }
     updateCamera(dt, now);
     updateBullets(dt);
+    updateSams(dt);
     updateMissiles(dt);
     for (const c of world.crates) { c.mesh.visible = c.avail; c.mesh.rotation.y += dt * 0.6; }
     updateMarkers(dt);

@@ -19,12 +19,12 @@ const PORT = process.env.PORT || 3000;
 // ── game constants (keep in sync with client) ──
 const MAX_PLAYERS = 10;
 const MAX_HP = 100;
-const MAP_HALF = 2250;
+const MAP_HALF = 4500;
 const ROUNDS_TO_WIN = 3;        // team battle: first to 3 rounds
 const FFA_KILLS_TO_WIN = 10;    // free-for-all: first to 10 kills
 const FFA_TIME = 8 * 60;        // seconds
 const FFA_RESPAWN = 5;          // seconds
-const CRATE_COUNT = 14;
+const CRATE_COUNT = 22;
 const CRATE_RESPAWN = 25;       // seconds
 const CRATE_HEAL = 35;
 
@@ -283,12 +283,12 @@ io.on('connection', socket => {
     if (target.hp <= 0) killPlayer(room, target, shooter, false);
   });
 
-  function killPlayer(r, target, shooter, crash) {
+  function killPlayer(r, target, shooter, crash, sam) {
     target.alive = false;
     target.hp = 0;
     target.deaths++;
     if (shooter.id !== target.id) shooter.kills++;
-    io.to(r.code).emit('kill', { target: target.id, by: shooter.id, crash });
+    io.to(r.code).emit('kill', { target: target.id, by: shooter.id, crash, sam: !!sam });
     broadcastRoom(r);
     if (r.mode === 'ffa') {
       if (shooter.kills >= FFA_KILLS_TO_WIN) return setTimeout(() => endMatch(r), 1500);
@@ -303,6 +303,24 @@ io.on('connection', socket => {
     if (!p || !p.alive) return;
     const att = p.lastHitBy && Date.now() - p.lastHitAt < 12000 && room.players.get(p.lastHitBy);
     killPlayer(room, p, att || p, true);
+  });
+
+  // hit by a ground SAM site (the victim's client simulates SAMs aimed at itself)
+  socket.on('samhit', h => {
+    if (!room || room.state !== 'playing' || !h) return;
+    const p = room.players.get(socket.id);
+    if (!p || !p.alive || Date.now() < room.roundStartAt) return;
+    const now = Date.now();
+    if (now - (p.lastSamHit || 0) < 300) return;
+    p.lastSamHit = now;
+    const pt = Array.isArray(h.pt) ? h.pt.slice(0, 3).map(Number) : [0, 0, 0];
+    const real = Math.min(40, p.hp);
+    p.hp -= real;
+    io.to(room.code).emit('dmg', { target: p.id, by: p.id, dmg: real, hp: p.hp, pt, zone: 'sam' });
+    if (p.hp <= 0) {
+      const att = p.lastHitBy && now - p.lastHitAt < 12000 && room.players.get(p.lastHitBy);
+      killPlayer(room, p, att || p, false, true);
+    }
   });
 
   socket.on('pickup', i => {
