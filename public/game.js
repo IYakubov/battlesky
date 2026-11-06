@@ -9,8 +9,8 @@ const $ = id => document.getElementById(id);
 // ── constants (keep in sync with server) ──
 const MAP_HALF = 4500;
 // ground air-defence (ПВО) sites on mountain tops
-// they only engage jets that cross the border hills (out of the battle area)
-const SAM_RANGE = 3000, SAM_LOCK = 1.4, SAM_CD = 5, SAM_DMG = 40, EDGE = MAP_HALF - 40;
+// they fire at a jet that is higher than their hilltop and within SAM_RANGE (above or to the side)
+const SAM_RANGE = 1500, SAM_LOCK = 1.4, SAM_CD = 5, EDGE = MAP_HALF - 40, RIDGE_E = 190;
 const MAX_HP = 100;
 const BULLET_SPEED = 680, FIRE_RATE = 9, BULLET_LIFE = 1.3, CONVERGE = 360;
 const HEAT_PER_SHOT = 0.05, COOL_RATE = 0.3, BASE_DMG = 7;
@@ -313,7 +313,13 @@ function buildWorld(seed) {
     h += (n2(x * 0.02, z * 0.02) - .5) * 5;
     for (let i = 0; i < villages.length; i++) h = lerp(h, vH[i], 1 - smooth(45, 95, Math.hypot(x - villages[i][0], z - villages[i][1])));
     const e = Math.max(Math.abs(x), Math.abs(z)) - (MAP_HALF - 40);
-    if (e > 0) { const ee = Math.min(e, 260); h += ee * ee * 0.0045 + ee * 0.7 + (n2(x * 0.01, z * 0.01) - .5) * ee * 0.8; }
+    // border "fence": a ridge of hills that peaks just outside the battle area, then falls away a bit
+    if (e > -80) {
+      const along = Math.abs(x) > Math.abs(z) ? z : x;
+      const crest = 330 + (n2(along * 0.0016 + 40, 7.7) - .5) * 160;
+      const prof = e < RIDGE_E ? smooth(-80, RIDGE_E, e) : 1 - smooth(RIDGE_E, RIDGE_E + 340, e) * 0.5;
+      h = lerp(h, crest + (n2(x * 0.012, z * 0.012) - .5) * 40, prof);
+    }
     return h;
   };
 
@@ -438,14 +444,20 @@ function buildWorld(seed) {
   const samMat = new THREE.MeshStandardMaterial({ color: 0x5d6640, roughness: .8, flatShading: true });
   const samDark = new THREE.MeshStandardMaterial({ color: 0x2f3328, roughness: .7, flatShading: true });
   const samLamp = new THREE.MeshBasicMaterial({ color: 0xff3020 });
-  const SAM_SIDE = 6, ring = EDGE + 190;
+  const SAM_SIDE = 6, ring = EDGE + RIDGE_E;
   for (let i = 0; i < SAM_SIDE * 4; i++) {
     const side = i / SAM_SIDE | 0, f = ((i % SAM_SIDE) + 0.5) / SAM_SIDE * 2 - 1;
     let x = [f * ring, ring, -f * ring, -ring][side], z = [-ring, f * ring, ring, -f * ring][side];
-    x += (rand() - .5) * 200; if (side % 2) x = Math.sign(x) * ring; else z = Math.sign(z) * ring;
-    const h = H(x, z);
+    let h = H(x, z);
+    for (let k = 0; k < 40; k++) {   // climb to the very top of this hill
+      let bx = x, bz = z, bh = h;
+      for (const [dx, dz] of [[15, 0], [-15, 0], [0, 15], [0, -15], [11, 11], [-11, 11], [11, -11], [-11, -11]]) {
+        const hh = H(x + dx, z + dz); if (hh > bh) { bh = hh; bx = x + dx; bz = z + dz; }
+      }
+      if (bh === h) break; x = bx; z = bz; h = bh;
+    }
     const g = new THREE.Group(); g.position.set(x, h - 0.5, z);
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(15, 17, 2.5, 10), padMat); pad.position.y = 0.6; pad.receiveShadow = true; g.add(pad);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(15, 22, 16, 10), padMat); pad.position.y = -6.1; pad.receiveShadow = true; g.add(pad);
     for (let k = 0; k < 9; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(5, 1.4, 1.6), padMat); const aa = k / 9 * TAU; b.position.set(Math.cos(aa) * 16, 2.3, Math.sin(aa) * 16); b.rotation.y = -aa + Math.PI / 2; g.add(b); }
     const base = new THREE.Mesh(new THREE.BoxGeometry(6, 2.2, 9), samMat); base.position.set(-3, 3, 0); base.castShadow = true; g.add(base);
     const turn = new THREE.Group(); turn.position.set(-3, 4.3, 0); g.add(turn);
@@ -889,8 +901,7 @@ function updateMe(dt, now) {
   warnText = '';
   const edgeD = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) - EDGE;
   if (edgeD > 450) { desH = Math.atan2(-t.pos.x, -t.pos.z); desP = 0.05; }
-  if (edgeD > 0) warnText = 'ВНЕ ЗОНЫ — ВАС ВИДИТ ПВО';
-  else if (edgeD > -300) warnText = 'ГРАНИЦА ЗОНЫ: ПВО';
+  if (edgeD > 0) warnText = 'ВНЕ ЗОНЫ БОЯ';
   if (t.pos.y > CEILING) desP = Math.min(desP, -0.15);
   const agl = t.pos.y - H(t.pos.x, t.pos.z);
   const turnK = Math.max(0.35, Math.min(1, (t.speed - 50) / 110)) * (boosting ? 0.85 : 1);
@@ -1100,9 +1111,9 @@ function updateSams(dt) {
     let sees = false;
     if (live) {
       const dx = t.pos.x - sm.x, dz = t.pos.z - sm.z, hd = Math.hypot(dx, dz);
-      const out = Math.max(Math.abs(t.pos.x), Math.abs(t.pos.z)) > EDGE;
-      if (out && hd < SAM_RANGE) {
-        sees = true;   // border radar sees anything that leaves the battle area
+      const d3 = Math.hypot(hd, t.pos.y - sm.top.y);
+      if (t.pos.y > sm.y + 15 && d3 < SAM_RANGE) {
+        sees = true;
       }
       if (sees) {
         sm.turn.rotation.y += (Math.atan2(dx, dz) - sm.turn.rotation.y) * Math.min(1, dt * 3);
@@ -1252,7 +1263,7 @@ function drawThreats(dt) {
       hctx.restore();
     }
   } else if (samLock) {
-    el.style.display = 'block'; el.className = 'lock'; el.textContent = samLock === 2 ? 'ПВО: ЗАХВАТ! ВЕРНИТЕСЬ В ЗОНУ!' : 'ПВО: РАДАР';
+    el.style.display = 'block'; el.className = 'lock'; el.textContent = samLock === 2 ? 'ПВО: ЗАХВАТ! НИЖЕ ХРЕБТА!' : 'ПВО: РАДАР';
     if (warnBeepT <= 0) { audio.tone(samLock === 2 ? 900 : 560, 0.08, 0.05); warnBeepT = samLock === 2 ? 0.16 : 0.5; }
   } else if (locked) {
     el.style.display = 'block'; el.className = 'lock'; el.textContent = locked === 2 ? 'ВАС ЗАХВАТИЛИ' : 'ВАС ЗАХВАТЫВАЮТ';
@@ -1530,13 +1541,14 @@ function updateMarkers(dt) {
 // ── minimap ──
 const mm = $('minimap'), mctx = mm.getContext('2d');
 let mmBase = null;
+const MMH = MAP_HALF + 450;   // minimap also shows the border ridge with its ПВО
 function buildMinimapBase() {
   const S = 380; mmBase = document.createElement('canvas'); mmBase.width = mmBase.height = S;
   const c = mmBase.getContext('2d');
-  const k = S / (MAP_HALF * 2);
+  const k = S / (MMH * 2);
   const img = c.createImageData(S, S);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const wx = (x / S * 2 - 1) * MAP_HALF, wz = (y / S * 2 - 1) * MAP_HALF;
+    const wx = (x / S * 2 - 1) * MMH, wz = (y / S * 2 - 1) * MMH;
     const hh = H(wx, wz), i = (y * S + x) * 4;
     const sh = (H(wx + 6, wz + 6) - hh) * 3;
     if (hh < -5) { img.data[i] = 70; img.data[i + 1] = 100; img.data[i + 2] = 112; img.data[i + 3] = 255; continue; }
@@ -1547,18 +1559,19 @@ function buildMinimapBase() {
   c.strokeStyle = 'rgba(255,255,255,.08)'; c.lineWidth = 1;
   for (let i = 1; i < 10; i++) { c.beginPath(); c.moveTo(i * S / 10, 0); c.lineTo(i * S / 10, S); c.moveTo(0, i * S / 10); c.lineTo(S, i * S / 10); c.stroke(); }
   c.fillStyle = 'rgba(40,60,30,.5)';
-  for (const t of world.trees) c.fillRect((t.x + MAP_HALF) * k, (t.z + MAP_HALF) * k, 2, 2);
+  for (const t of world.trees) c.fillRect((t.x + MMH) * k, (t.z + MMH) * k, 2, 2);
   c.fillStyle = '#c9c0ae';
-  for (const b of world.boxes) c.fillRect((b.x - b.hx + MAP_HALF) * k, (b.z - b.hz + MAP_HALF) * k, Math.max(2, b.hx * 2 * k), Math.max(2, b.hz * 2 * k));
+  for (const b of world.boxes) c.fillRect((b.x - b.hx + MMH) * k, (b.z - b.hz + MMH) * k, Math.max(2, b.hx * 2 * k), Math.max(2, b.hz * 2 * k));
 }
 function drawMinimap() {
   if (!mmBase || !inGame) return;
-  const S = 380, k = S / (MAP_HALF * 2);
+  const S = 380, k = S / (MMH * 2);
   mctx.clearRect(0, 0, S, S);
   mctx.drawImage(mmBase, 0, 0);
-  const P = (x, z) => [(x + MAP_HALF) * k, (z + MAP_HALF) * k];
+  const P = (x, z) => [(x + MMH) * k, (z + MMH) * k];
   for (const sm of world.sams) {
     const [x, y] = P(sm.x, sm.z);
+    mctx.strokeStyle = sm.lockT > 0 ? 'rgba(255,70,50,.85)' : 'rgba(255,70,50,.28)'; mctx.lineWidth = 1.2; mctx.beginPath(); mctx.arc(x, y, SAM_RANGE * k, 0, TAU); mctx.stroke();
     mctx.fillStyle = '#ff4a36'; mctx.beginPath(); mctx.moveTo(x, y - 6); mctx.lineTo(x + 5, y + 4); mctx.lineTo(x - 5, y + 4); mctx.closePath(); mctx.fill();
   }
   for (const c of world.crates) if (c.avail) { const [x, y] = P(c.x, c.z); mctx.strokeStyle = '#9bff7a'; mctx.lineWidth = 3; mctx.beginPath(); mctx.arc(x, y, 6, 0, TAU); mctx.stroke(); }
