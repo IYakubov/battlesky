@@ -788,6 +788,8 @@ function onBulletHit(b, hit, pt) {
 
 // ═══════════ INPUT ═══════════
 const keys = {};
+let cockpit = false; try { cockpit = localStorage.getItem('sky_cockpit') === '1'; } catch (e) {}
+let aimSX = 0, aimSY = 0, inCockpit = false;
 let camYaw = 0, camPitch = 0, camDist = 40, zoom = false, mouseFire = false, locked = false, chatOpen = false;
 addEventListener('keydown', e => {
   if (chatOpen) {
@@ -803,6 +805,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Space' && (!myPlane() || !myPlane().alive)) cycleSpectate();
   if (e.code === 'KeyQ') fireMissile();
   if (e.code === 'KeyF') dropFlares();
+  if (e.code === 'KeyV' && !chatOpen) toggleCockpit();
   if (e.code === 'KeyC') zoom = true;
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Tab') $('board').classList.remove('on'); if (e.code === 'KeyC') zoom = false; });
@@ -844,6 +847,7 @@ if (isTouch) {
       if (t.target.id === 'tzoom') { touch.boost = true; continue; }
       if (t.target.id === 'tmis') { fireMissile(); continue; }
       if (t.target.id === 'tflare') { dropFlares(); continue; }
+      if (t.target.id === 'tview') { toggleCockpit(); continue; }
       if (t.clientX < innerWidth * 0.4 && touch.joyId === null) { touch.joyId = t.identifier; moveJoy(t); }
       else if (touch.lookId === null) { touch.lookId = t.identifier; touch.lx = t.clientX; touch.ly = t.clientY; }
     }
@@ -1277,7 +1281,7 @@ function drawLockUi() {
   if (ammo.n > 0) {
     const r = LOCK_CONE / (camera.fov * Math.PI / 360) * (h / 2);
     hctx.setLineDash([4, 6]); hctx.lineWidth = 1; hctx.strokeStyle = 'rgba(255,255,255,.35)';
-    hctx.beginPath(); hctx.arc(w / 2, h / 2, r, 0, TAU); hctx.stroke(); hctx.setLineDash([]);
+    hctx.beginPath(); hctx.arc(aimSX, aimSY, r, 0, TAU); hctx.stroke(); hctx.setLineDash([]);
   }
   if (!lock.id) return;
   const o = planes.get(lock.id); if (!o) return;
@@ -1325,6 +1329,65 @@ function updateRemote(t, dt, now) {
 }
 
 // ═══════════ CAMERA ═══════════
+// ── pilot view: simple cockpit that rides with the camera ──
+function toggleCockpit() {
+  cockpit = !cockpit;
+  try { localStorage.setItem('sky_cockpit', cockpit ? '1' : '0'); } catch (e) {}
+  logMsg(cockpit ? 'Вид из кабины · V — снаружи' : 'Вид снаружи · V — кабина');
+}
+const ckG = new THREE.Group(); ckG.visible = false;
+camera.add(ckG); scene.add(camera);
+{
+  const frame = new THREE.MeshStandardMaterial({ color: 0x2b2e30, roughness: .7, metalness: .3, flatShading: true });
+  const body = new THREE.MeshStandardMaterial({ color: 0x3d4347, roughness: .8, metalness: .2, flatShading: true });
+  // instrument panel face drawn once on a canvas
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#26292b'; c.fillRect(0, 0, 1024, 256);
+  const dial = (x, y, r, lbl) => {
+    c.fillStyle = '#0d0f10'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    c.strokeStyle = '#8b9196'; c.lineWidth = 4; c.stroke();
+    c.strokeStyle = '#d9dcd2'; c.lineWidth = 3;
+    for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; c.beginPath(); c.moveTo(x + Math.cos(a) * r * .78, y + Math.sin(a) * r * .78); c.lineTo(x + Math.cos(a) * r * .92, y + Math.sin(a) * r * .92); c.stroke(); }
+    c.strokeStyle = '#f0a040'; c.lineWidth = 5; c.beginPath(); c.moveTo(x, y); c.lineTo(x + r * .6, y - r * .35); c.stroke();
+    c.fillStyle = '#9aa0a4'; c.font = 'bold 18px sans-serif'; c.textAlign = 'center'; c.fillText(lbl, x, y + r + 24);
+  };
+  const mfd = (x, lbl) => {
+    c.fillStyle = '#0a0d0c'; c.fillRect(x, 40, 210, 170); c.strokeStyle = '#555b5f'; c.lineWidth = 8; c.strokeRect(x, 40, 210, 170);
+    c.strokeStyle = 'rgba(110,255,150,.75)'; c.lineWidth = 2;
+    if (lbl === 'РЛС') { for (let r = 30; r <= 150; r += 40) { c.beginPath(); c.arc(x + 105, 205, r, Math.PI * 1.15, Math.PI * 1.85); c.stroke(); } c.beginPath(); c.moveTo(x + 105, 205); c.lineTo(x + 50, 70); c.stroke(); }
+    else { c.beginPath(); c.moveTo(x + 20, 125); c.lineTo(x + 190, 125); c.stroke(); for (let k = 0; k < 6; k++) { c.strokeRect(x + 25 + k * 28, 150, 18, 30); } }
+    c.fillStyle = 'rgba(110,255,150,.85)'; c.font = 'bold 16px sans-serif'; c.textAlign = 'left'; c.fillText(lbl, x + 10, 62);
+  };
+  mfd(60, 'РЛС'); mfd(754, 'СУО');
+  dial(360, 110, 62, 'СКОР'); dial(512, 100, 70, 'АГ'); dial(664, 110, 62, 'ВЫС');
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const face = new THREE.MeshBasicMaterial({ map: tex });
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.35), [body, body, body, body, face, body]);
+  panel.position.set(0, -0.66, -1.02); panel.rotation.x = -0.35; ckG.add(panel);
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.05, 0.42), frame); shield.position.set(0, -0.41, -0.98); ckG.add(shield);
+  // HUD combiner glass
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.26), new THREE.MeshBasicMaterial({ color: 0x9effc0, transparent: true, opacity: 0.06, depthWrite: false }));
+  glass.position.set(0, -0.26, -0.95); glass.rotation.x = -0.15; ckG.add(glass);
+  for (const sx of [-1, 1]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.27, 0.018), frame); post.position.set(sx * 0.17, -0.27, -0.95); ckG.add(post); }
+  // canopy bows and side rails
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.035, 6, 40, Math.PI * 0.82), frame);
+  bow.position.set(0, -0.48, -1.12); bow.rotation.z = Math.PI * 0.09; ckG.add(bow);
+  const bow2 = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.05, 6, 40, Math.PI), frame);
+  bow2.position.set(0, -0.48, 0.15); ckG.add(bow2);
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.6), body); rail.position.set(sx * 1.08, -0.52, -0.35); ckG.add(rail);
+    const sill = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 1.3), body); sill.position.set(sx * 1.05, -0.8, -0.45); ckG.add(sill);
+  }
+  ckG.traverse(o => { if (o.isMesh) o.renderOrder = 5; });
+}
+const _qFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+function setOwnModelHidden(t, hide) {
+  if (!t || t._ckHidden === hide) return;
+  t._ckHidden = hide;
+  for (const ch of t.vis.g.children) ch.visible = !hide;
+}
+
 function updateCamera(dt, now) {
   const t = myPlane();
   let focus = t && (t.alive || t.falling || now - myDeathAt < 2500) ? t : null;
@@ -1340,6 +1403,23 @@ function updateCamera(dt, now) {
     $('spec').textContent = focus && focus.alive && focus !== t ? `НАБЛЮДЕНИЕ: ${p ? p.name.toUpperCase() : ''} · ПРОБЕЛ — СЛЕДУЮЩИЙ` : 'ВАС СБИЛИ · ОЖИДАНИЕ';
   }
   if (!focus) return;
+  inCockpit = cockpit && !spectating && focus === t && t.alive && !t.crashed;
+  setOwnModelHidden(t, inCockpit);
+  if (document.body.classList.contains('ck') !== inCockpit) document.body.classList.toggle('ck', inCockpit);
+  ckG.visible = inCockpit;
+  if (inCockpit) {
+    const g = t.vis.g; g.updateMatrixWorld();
+    camera.fov = lerp(camera.fov, zoom ? 32 : 72, 1 - Math.exp(-10 * dt));
+    camera.updateProjectionMatrix();
+    shake = Math.max(0, shake - dt * 1.5);
+    const sk = shake * shake * 0.12;
+    camera.position.set(0, 1.32, 3.7).applyMatrix4(g.matrixWorld);
+    camera.position.x += (Math.random() - .5) * sk; camera.position.y += (Math.random() - .5) * sk;
+    camera.quaternion.copy(g.quaternion).multiply(_qFlip);
+    sun.position.set(t.pos.x + SUN_DIR.x * 400, t.pos.y + SUN_DIR.y * 400, t.pos.z + SUN_DIR.z * 400);
+    sun.target.position.copy(t.pos);
+    return;
+  }
   const d = _v1.set(Math.sin(camYaw) * Math.cos(camPitch), Math.sin(camPitch), Math.cos(camYaw) * Math.cos(camPitch));
   const base = focus.pos;
   const dist = zoom && !spectating ? camDist * 0.6 : camDist;
@@ -1381,17 +1461,88 @@ function project(v) {
   if (_v2.z > 1) return null;
   return [(_v2.x * .5 + .5) * innerWidth, (-_v2.y * .5 + .5) * innerHeight];
 }
+// green head-up display for the pilot view: pitch ladder, heading tape, speed and altitude
+const HUDG = 'rgba(120,255,160,.9)';
+function drawPilotHud(t, w, h) {
+  const c = hctx;
+  c.save();
+  c.strokeStyle = HUDG; c.fillStyle = HUDG; c.lineWidth = 1.6; c.font = '700 11px Unbounded';
+  const cam = camera.position;
+  // pitch ladder: project lines of constant pitch straight ahead
+  const right = _v4.set(Math.cos(t.h), 0, -Math.sin(t.h));
+  const pDeg = t.p * 180 / Math.PI;
+  for (let a = Math.ceil((pDeg - 25) / 5) * 5; a <= pDeg + 25; a += 5) {
+    if (a < -85 || a > 85) continue;
+    const ar = a * Math.PI / 180;
+    const ctr = _v3.copy(cam).addScaledVector(fwd(t.h, ar, _v1), 600);
+    const big = a % 10 === 0, half = a === 0 ? 120 : big ? 60 : 30;
+    const p1 = project(_v2.copy(ctr).addScaledVector(right, half)); if (!p1) continue;
+    const p2 = project(_v2.copy(ctr).addScaledVector(right, -half)); if (!p2) continue;
+    const mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+    c.setLineDash(a < 0 ? [8, 6] : []);
+    if (a === 0) { c.beginPath(); c.moveTo(p1[0], p1[1]); c.lineTo(p2[0], p2[1]); c.stroke(); }
+    else {
+      c.beginPath(); c.moveTo(p1[0], p1[1]); c.lineTo(p1[0] + (mx - p1[0]) * 0.65, p1[1] + (my - p1[1]) * 0.65);
+      c.moveTo(p2[0], p2[1]); c.lineTo(p2[0] + (mx - p2[0]) * 0.65, p2[1] + (my - p2[1]) * 0.65); c.stroke();
+      if (big) { c.setLineDash([]); c.textAlign = 'center'; c.fillText(String(Math.abs(a)), p1[0] + (p1[0] - mx) * 0.18, p1[1] + (p1[1] - my) * 0.18 + 4); }
+    }
+  }
+  c.setLineDash([]);
+  // boresight (where the nose points)
+  const cx = w / 2, cy = h / 2;
+  c.lineWidth = 2; c.beginPath();
+  c.moveTo(cx - 26, cy); c.lineTo(cx - 12, cy); c.lineTo(cx - 6, cy + 8); c.lineTo(cx, cy); c.lineTo(cx + 6, cy + 8); c.lineTo(cx + 12, cy); c.lineTo(cx + 26, cy);
+  c.stroke();
+  // heading tape
+  const hd = ((-t.h * 180 / Math.PI) % 360 + 540) % 360;   // 0 = north, clockwise
+  const tw = Math.min(360, w * 0.32), ty = 74;
+  c.lineWidth = 1.5; c.textAlign = 'center';
+  for (let k = -20; k <= 20; k++) {
+    const deg = Math.round(hd) + k;
+    const x = cx + (deg - hd) / 20 * (tw / 2);
+    if (deg % 5) continue;
+    c.beginPath(); c.moveTo(x, ty); c.lineTo(x, ty + (deg % 10 ? 6 : 11)); c.stroke();
+    if (deg % 10 === 0) c.fillText(String(((deg % 360) + 360) % 360 / 10 | 0).padStart(2, '0'), x, ty - 4);
+  }
+  c.beginPath(); c.moveTo(cx, ty + 14); c.lineTo(cx - 6, ty + 22); c.lineTo(cx + 6, ty + 22); c.closePath(); c.fill();
+  // speed (left) and altitude (right) boxes
+  const by = cy - 14, gap = Math.min(260, w * 0.24);
+  c.font = '800 14px Unbounded'; c.lineWidth = 1.6;
+  c.strokeRect(cx - gap - 74, by, 74, 28); c.textAlign = 'right'; c.fillText(String(Math.round(t.speed * 3.6)), cx - gap - 8, by + 20);
+  c.strokeRect(cx + gap, by, 84, 28); c.textAlign = 'right'; c.fillText(String(Math.round(t.pos.y)), cx + gap + 76, by + 20);
+  c.font = '700 9px Unbounded'; c.textAlign = 'center';
+  c.fillText('КМ/Ч', cx - gap - 37, by + 42); c.fillText('ВЫС М', cx + gap + 42, by + 42);
+  c.fillText('ТЯГА ' + Math.round(t.throttle * 100) + '%' + (t.boosting ? ' ФОРС' : ''), cx - gap - 37, by + 58);
+  c.restore();
+}
 function drawHud(now, dt) {
   const w = innerWidth, h = innerHeight;
   hctx.clearRect(0, 0, w, h);
   if (!inGame) return;
   const t = myPlane();
   if (t && t.alive && !t.crashed) {
-    // mouse-aim circle (where you want to fly)
+    // mouse-aim circle (where you want to fly): screen centre outside, free-floating in the cockpit
+    aimSX = w / 2; aimSY = h / 2;
+    if (inCockpit) {
+      const ad = _v1.set(Math.sin(camYaw) * Math.cos(camPitch), Math.sin(camPitch), Math.cos(camYaw) * Math.cos(camPitch));
+      const v = _v2.copy(ad).transformDirection(camera.matrixWorldInverse);
+      if (v.z < -0.05) {
+        const f = (h / 2) / Math.tan(camera.fov * Math.PI / 360);
+        aimSX = w / 2 + v.x / -v.z * f; aimSY = h / 2 - v.y / -v.z * f;
+      } else { aimSX = w / 2 + Math.sign(v.x || 1) * w; aimSY = h / 2 - v.y * h; }
+      const cx = Math.max(30, Math.min(w - 30, aimSX)), cy = Math.max(30, Math.min(h - 30, aimSY));
+      if (cx !== aimSX || cy !== aimSY) {   // off screen: arrow at the edge
+        const ang = Math.atan2(aimSY - h / 2, aimSX - w / 2);
+        hctx.save(); hctx.translate(cx, cy); hctx.rotate(ang); hctx.fillStyle = 'rgba(255,255,255,.85)';
+        hctx.beginPath(); hctx.moveTo(14, 0); hctx.lineTo(-8, -9); hctx.lineTo(-8, 9); hctx.closePath(); hctx.fill(); hctx.restore();
+      }
+      aimSX = cx; aimSY = cy;
+      drawPilotHud(t, w, h);
+    }
     hctx.lineWidth = 3; hctx.strokeStyle = 'rgba(0,0,0,.35)';
-    hctx.beginPath(); hctx.arc(w / 2, h / 2, 12, 0, TAU); hctx.stroke();
+    hctx.beginPath(); hctx.arc(aimSX, aimSY, 12, 0, TAU); hctx.stroke();
     hctx.lineWidth = 1.5; hctx.strokeStyle = 'rgba(255,255,255,.8)';
-    hctx.beginPath(); hctx.arc(w / 2, h / 2, 12, 0, TAU); hctx.stroke();
+    hctx.beginPath(); hctx.arc(aimSX, aimSY, 12, 0, TAU); hctx.stroke();
     // gun cross (where the bullets go)
     const gp = project(_v3.copy(t.pos).addScaledVector(fwd(t.h, t.p, _v4), CONVERGE));
     let gunPt = null;

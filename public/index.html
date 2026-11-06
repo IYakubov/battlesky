@@ -60,6 +60,8 @@ input.txt:focus{border-color:var(--acc)}
 #top .tA{color:var(--a)}#top .tB{color:var(--b)}
 #top .mid{font-size:9px;letter-spacing:.25em;color:var(--dim);text-align:center}
 #bottom{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);width:min(460px,70vw)}
+body.ck #bottom{left:16px;bottom:12px;transform:none;width:min(340px,38vw)}
+body.ck #hpwrap{background:rgba(8,12,10,.38);padding:7px 11px}
 #hpwrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 #hpline{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.2em;color:var(--dim);margin-bottom:6px}
 #hpline b{color:var(--txt);font-size:14px;letter-spacing:0}
@@ -118,6 +120,7 @@ tr.dead td{opacity:.45}
 #touch.on{display:block}
 #joy{position:absolute;left:30px;bottom:30px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15)}
 #joyk{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px;border-radius:50%;background:rgba(255,255,255,.18)}
+#tview{position:absolute;right:20px;top:120px;width:70px;height:34px;border-radius:17px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 9px Unbounded;pointer-events:auto}
 #tfire{position:absolute;right:40px;bottom:60px;width:96px;height:96px;border-radius:50%;background:rgba(224,80,63,.45);border:2px solid rgba(255,255,255,.3);color:#fff;font:800 12px Unbounded}
 #tzoom{position:absolute;right:150px;bottom:40px;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 10px Unbounded}
 @keyframes fin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
@@ -169,7 +172,7 @@ tr.dead td{opacity:.45}
     </div>
     <div class="help">
       <kbd>Мышь</kbd> управление (истребитель летит за прицелом) · <kbd>Клик</kbd> пушка · <kbd>ПКМ</kbd>/<kbd>Q</kbd> ракета · <kbd>F</kbd> ловушки ·
-      <kbd>W</kbd><kbd>S</kbd> тяга · <kbd>Shift</kbd> форсаж · <kbd>A</kbd><kbd>D</kbd> руль · <kbd>C</kbd> приближение · <kbd>Колесо</kbd> камера · <kbd>Tab</kbd> счёт · <kbd>Enter</kbd> чат · <kbd>M</kbd> звук.
+      <kbd>W</kbd><kbd>S</kbd> тяга · <kbd>Shift</kbd> форсаж · <kbd>A</kbd><kbd>D</kbd> руль · <kbd>C</kbd> приближение · <kbd>V</kbd> кабина пилота · <kbd>Колесо</kbd> камера · <kbd>Tab</kbd> счёт · <kbd>Enter</kbd> чат · <kbd>M</kbd> звук.
       Держите врага в круге прицела — после захвата ракета догоняет его 4 секунды. Услышали «РАКЕТА!» — резко отверните и сбросьте ловушки. Зелёные кольца чинят и пополняют ракеты.
     </div>
   </div>
@@ -213,6 +216,7 @@ tr.dead td{opacity:.45}
   <button id="tfire">ОГОНЬ</button>
   <button id="tmis">РАКЕТА</button>
   <button id="tflare">ЛОВУШКИ</button>
+  <button id="tview">КАБИНА</button>
 </div>
 
 <!-- PAUSE -->
